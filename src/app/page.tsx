@@ -16,7 +16,7 @@ import {
   ArrowRight,
 } from 'lucide-react'
 
-export const instant = false
+export const dynamic = 'force-dynamic'
 
 export default async function HomePage() {
   const supabase = await createClient()

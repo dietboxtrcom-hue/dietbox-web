@@ -8,7 +8,7 @@ import PackageConfigurator from '@/components/PackageConfigurator'
 import { formatTRY } from '@/lib/pricing-engine'
 import { Flame, Dumbbell, UtensilsCrossed, ArrowLeft, ShieldCheck } from 'lucide-react'
 
-export const instant = false
+export const dynamic = 'force-dynamic'
 
 interface PageProps {
   params: Promise<{ slug: string }>

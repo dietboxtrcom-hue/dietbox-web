@@ -5,7 +5,7 @@ import SiteHeader from '@/components/SiteHeader'
 import { formatTRY } from '@/lib/pricing-engine'
 import { Flame, ArrowRight } from 'lucide-react'
 
-export const instant = false
+export const dynamic = 'force-dynamic'
 
 export default async function AllPackagesPage() {
   const supabase = await createClient()

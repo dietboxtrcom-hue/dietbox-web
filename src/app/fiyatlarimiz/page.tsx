@@ -6,7 +6,7 @@ import SiteFooter from '@/components/SiteFooter'
 import { formatTRY } from '@/lib/pricing-engine'
 import { ArrowRight, CheckCircle2, Sparkles } from 'lucide-react'
 
-export const instant = false
+export const dynamic = 'force-dynamic'
 
 export default async function PricingTablePage() {
   const supabase = await createClient()
