@@ -472,6 +472,31 @@ export async function POST(request: Request) {
       if (error) throw error
       return NextResponse.json({ success: true })
     }
+    // 12. SIKÇA SORULAN SORULAR (FAQ) EKLEME / GÜNCELLEME / SİLME
+    if (action === 'save_faq') {
+      const { id, category, question, answer, sort_order, is_active } = payload
+      const rec = {
+        category: (category || 'Genel').trim(),
+        question: (question || '').trim(),
+        answer: (answer || '').trim(),
+        sort_order: Number(sort_order || 1),
+        is_active: is_active ?? true,
+      }
+      if (id) {
+        const { error } = await supabase.from('faqs').update(rec).eq('id', id)
+        if (error) throw error
+      } else {
+        const { error } = await supabase.from('faqs').insert(rec)
+        if (error) throw error
+      }
+      return NextResponse.json({ success: true })
+    }
+
+    if (action === 'delete_faq') {
+      const { error } = await supabase.from('faqs').delete().eq('id', payload.id)
+      if (error) throw error
+      return NextResponse.json({ success: true })
+    }
     return NextResponse.json({ error: 'Geçersiz işlem' }, { status: 400 })
   } catch (err: any) {
     return NextResponse.json({ error: err?.message || 'Sunucu hatası' }, { status: 500 })

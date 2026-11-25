@@ -34,6 +34,7 @@ import {
   Images,
   ShieldAlert,
   LogOut,
+  HelpCircle,
   Lock,
   Mail,
   FileText,
@@ -41,6 +42,7 @@ import {
 
 type AdminSection =
   | 'dashboard'
+  | 'faqs'
   | 'dispatch'
   | 'products'
   | 'sliders'
@@ -89,6 +91,7 @@ export default function AdminDashboardPage() {
   const [calendarBlocks, setCalendarBlocks] = useState<any[]>([])
   const [navMenus, setNavMenus] = useState<any[]>([])
   const [corporatePages, setCorporatePages] = useState<any[]>([])
+  const [faqs, setFaqs] = useState<any[]>([])
   const [adminUsersList, setAdminUsersList] = useState<any[]>([])
   const [contactMessages, setContactMessages] = useState<any[]>([])
 
@@ -100,7 +103,7 @@ export default function AdminDashboardPage() {
     whatsapp_message:
       'Merhaba DietBox, diyet paketleriniz ve mahalle teslimat saatleriniz hakkında bilgi almak istiyorum.',
     email: 'info@dietboxtr.com',
-    address: 'Aydınevler Mah. Kırçiçeği Cad. No:28/A Maltepe / İstanbul',
+    address: 'Aydınevler Mah. Kırçiçeği Cad. 34854 Maltepe / İstanbul',
     working_hours: 'Pazartesi - Cumartesi: 06:00 - 18:00',
     delivery_hours_info: 'Teslimat Saatleri : Sabah 06:00 - 09:30 Arasıdır',
     instagram_url: 'https://www.instagram.com/dietboxtr/',
@@ -137,6 +140,15 @@ export default function AdminDashboardPage() {
     sort_order: number
     is_active: boolean
   }>({ parent_id: '', title: '', url: '', sort_order: 1, is_active: true })
+
+  const [faqForm, setFaqForm] = useState<{
+    id?: number
+    category: string
+    question: string
+    answer: string
+    sort_order: number
+    is_active: boolean
+  }>({ category: 'Sipariş & Teslimat', question: '', answer: '', sort_order: 1, is_active: true })
 
   // Kurumsal Sayfa Form State
   const [corpForm, setCorpForm] = useState<{
@@ -182,6 +194,7 @@ export default function AdminDashboardPage() {
 
     const [
       pkgRes,
+      faqRes,
       slideRes,
       citRes,
       distRes,
@@ -197,6 +210,7 @@ export default function AdminDashboardPage() {
       posSetRes,
     ] = await Promise.all([
       supabase.from('packages').select('*').order('sort_order'),
+      supabase.from('faqs').select('*').order('sort_order'),
       supabase.from('sliders').select('*').order('sort_order'),
       supabase.from('cities').select('*').order('id'),
       supabase.from('districts').select('*').order('side').order('name'),
@@ -213,6 +227,7 @@ export default function AdminDashboardPage() {
     ])
 
     setPackages(pkgRes.data || [])
+    setFaqs(faqRes.data || [])
     setSliders(slideRes.data || [])
     setCities(citRes.data || [])
     setDistricts(distRes.data || [])
@@ -450,6 +465,7 @@ export default function AdminDashboardPage() {
     { id: 'customers', label: 'Müşteriler & Mesajlar', icon: Users, badge: stats.customers.length },
     { id: 'locations', label: 'İl / İlçe / Mahalle Lojistik', icon: MapPin, badge: neighborhoods.length },
     { id: 'corporate', label: 'Kurumsal Sayfalar', icon: FileText, badge: corporatePages.length },
+    { id: 'faqs', label: 'Sıkça Sorulanlar (SSS)', icon: HelpCircle, badge: faqs.length },
     { id: 'menus', label: 'Menü Yöneticisi', icon: MenuIcon, badge: navMenus.length },
     { id: 'calendar', label: 'Tatil & Kota Kapatma', icon: CalendarOff },
     { id: 'admins', label: 'Yetkili Kullanıcılar', icon: ShieldAlert, badge: adminUsersList.length },
@@ -654,7 +670,7 @@ export default function AdminDashboardPage() {
           <div className="flex items-center gap-3 text-xs">
             <span className="hidden sm:inline-flex items-center gap-1.5 bg-emerald-50 text-emerald-800 border border-emerald-200 px-3 py-1.5 rounded-full font-semibold">
               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-              {packages.length} Paket • {orders.length} Sipariş • {corporatePages.length} Kurumsal Sayfa
+              {packages.length} Paket • {orders.length} Sipariş • {corporatePages.length} Kurumsal • {faqs.length} SSS
             </span>
           </div>
         </header>
@@ -1608,14 +1624,14 @@ export default function AdminDashboardPage() {
                   </div>
 
                   <div>
-  <label className="block text-xs font-bold text-slate-700 mb-1">
-    Sayfa İçeriği (Zengin Metin Editörü)
-  </label>
-  <RichTextEditor
-    value={corpForm.content}
-    onChange={(html) => setCorpForm({ ...corpForm, content: html })}
-  />
-</div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      Sayfa İçeriği (Zengin Metin Editörü)
+                    </label>
+                    <RichTextEditor
+                      value={corpForm.content}
+                      onChange={(html) => setCorpForm({ ...corpForm, content: html })}
+                    />
+                  </div>
 
                   <label className="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer">
                     <input
@@ -1740,7 +1756,178 @@ export default function AdminDashboardPage() {
             </div>
           )}
 
-          {/* 9. MENÜ YÖNETİCİSİ */}
+          {/* 9. SIKÇA SORULAN SORULAR (SSS) YÖNETİCİSİ */}
+          {activeSection === 'faqs' && (
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+              <div className="lg:col-span-5 bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-4 h-fit">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-base font-extrabold text-slate-900">
+                    {faqForm.id ? 'Soruyu Düzenle' : 'Yeni SSS Maddesi Ekle'}
+                  </h3>
+                  {faqForm.id && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setFaqForm({
+                          category: 'Sipariş & Teslimat',
+                          question: '',
+                          answer: '',
+                          sort_order: faqs.length + 1,
+                          is_active: true,
+                        })
+                      }
+                      className="text-xs font-bold text-slate-500 hover:text-slate-900 cursor-pointer"
+                    >
+                      + Yeni Soru
+                    </button>
+                  )}
+                </div>
+
+                <form
+                  onSubmit={async (e) => {
+                    e.preventDefault()
+                    const res = await fetch('/api/admin', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ action: 'save_faq', payload: faqForm }),
+                    })
+                    if (res.ok) {
+                      alert('Soru kaydedildi!')
+                      setFaqForm({
+                        category: 'Sipariş & Teslimat',
+                        question: '',
+                        answer: '',
+                        sort_order: faqs.length + 1,
+                        is_active: true,
+                      })
+                      fetchAllData()
+                    } else {
+                      const err = await res.json()
+                      alert(err.error || 'Soru kaydedilemedi.')
+                    }
+                  }}
+                  className="space-y-3"
+                >
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="col-span-2">
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Kategori</label>
+                      <select
+                        value={faqForm.category}
+                        onChange={(e) => setFaqForm({ ...faqForm, category: e.target.value })}
+                        className="w-full border border-slate-300 rounded-xl px-3 py-2 text-xs"
+                      >
+                        <option value="Sipariş & Teslimat">Sipariş & Teslimat</option>
+                        <option value="Paketler & Beslenme">Paketler & Beslenme</option>
+                        <option value="Dondurma & İptal">Dondurma & İptal</option>
+                        <option value="Ödeme & Fatura">Ödeme & Fatura</option>
+                        <option value="Genel">Genel</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Sıra</label>
+                      <input
+                        type="number"
+                        value={faqForm.sort_order}
+                        onChange={(e) =>
+                          setFaqForm({ ...faqForm, sort_order: Number(e.target.value) })
+                        }
+                        className="w-full border border-slate-300 rounded-xl px-3 py-2 text-xs"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Soru</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Örn: Paketlerim saat kaçta teslim ediliyor?"
+                      value={faqForm.question}
+                      onChange={(e) => setFaqForm({ ...faqForm, question: e.target.value })}
+                      className="w-full border border-slate-300 rounded-xl px-3.5 py-2 text-sm font-bold"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Cevap</label>
+                    <textarea
+                      rows={5}
+                      required
+                      value={faqForm.answer}
+                      onChange={(e) => setFaqForm({ ...faqForm, answer: e.target.value })}
+                      className="w-full border border-slate-300 rounded-xl px-3.5 py-2 text-xs leading-relaxed"
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 rounded-xl text-xs cursor-pointer"
+                  >
+                    {faqForm.id ? 'Soruyu Güncelle' : '+ Soruyu Ekle'}
+                  </button>
+                </form>
+              </div>
+
+              <div className="lg:col-span-7 bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-base font-extrabold text-slate-900">
+                    Kayıtlı Sorular ({faqs.length})
+                  </h3>
+                  <a
+                    href="/sikca-sorulan-sorular"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-xs font-bold text-emerald-700 hover:underline flex items-center gap-1"
+                  >
+                    SSS Sayfasını Gör <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                </div>
+
+                <div className="space-y-2.5">
+                  {faqs.map((f) => (
+                    <div
+                      key={f.id}
+                      className="border border-slate-200 rounded-2xl p-4 bg-slate-50/50 flex items-start justify-between gap-3"
+                    >
+                      <div className="space-y-1">
+                        <span className="text-[10px] font-extrabold text-emerald-700 uppercase">
+                          {f.category} • Sıra {f.sort_order}
+                        </span>
+                        <h4 className="text-sm font-bold text-slate-900">{f.question}</h4>
+                        <p className="text-xs text-slate-600 line-clamp-2">{f.answer}</p>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => setFaqForm(f)}
+                          className="bg-slate-900 text-white text-xs font-bold px-3 py-1.5 rounded-lg cursor-pointer"
+                        >
+                          Düzenle
+                        </button>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            if (!confirm('Bu soruyu silmek istediğinize emin misiniz?')) return
+                            await fetch('/api/admin', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ action: 'delete_faq', payload: { id: f.id } }),
+                            })
+                            fetchAllData()
+                          }}
+                          className="text-red-500 p-1.5 cursor-pointer"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 10. MENÜ YÖNETİCİSİ */}
           {activeSection === 'menus' && (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
               <div className="lg:col-span-5 bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-4 h-fit">
@@ -1956,7 +2143,7 @@ export default function AdminDashboardPage() {
             </div>
           )}
 
-          {/* 10. TATİL & KOTA KAPATMA */}
+          {/* 11. TATİL & KOTA KAPATMA */}
           {activeSection === 'calendar' && (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
               <div className="lg:col-span-5 bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-4">
@@ -2049,7 +2236,7 @@ export default function AdminDashboardPage() {
             </div>
           )}
 
-          {/* 11. YETKİLİ KULLANICILAR YÖNETİMİ */}
+          {/* 12. YETKİLİ KULLANICILAR YÖNETİMİ */}
           {activeSection === 'admins' && (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
               <div className="lg:col-span-5 bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-4 h-fit">
@@ -2164,7 +2351,7 @@ export default function AdminDashboardPage() {
             </div>
           )}
 
-          {/* 12. GENEL AYARLAR, WHATSAPP MESAJI VE SANAL POS */}
+          {/* 13. GENEL AYARLAR, WHATSAPP MESAJI VE SANAL POS */}
           {activeSection === 'settings' && (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
               <form
