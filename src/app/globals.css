@@ -1,0 +1,85 @@
+/* src/app/globals.css */
+@import "tailwindcss";
+
+:root {
+  --brand-green: #51a885;
+  --brand-green-dark: #3b8265;
+  --brand-gold: #eab130;
+  --brand-gold-dark: #d49b1a;
+  --brand-dark: #0d1f18;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: #f8faf9;
+  color: #0f172a;
+  background-image: 
+    radial-gradient(at 0% 0%, rgba(81, 168, 133, 0.08) 0px, transparent 50%),
+    radial-gradient(at 100% 20%, rgba(234, 177, 48, 0.08) 0px, transparent 50%),
+    radial-gradient(at 50% 100%, rgba(81, 168, 133, 0.06) 0px, transparent 50%);
+  background-attachment: fixed;
+}
+
+@keyframes floatSlow {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+@keyframes floatReverse {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(8px);
+  }
+}
+
+@keyframes marqueeScroll {
+  0% {
+    transform: translateX(0%);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+.animate-float {
+  animation: floatSlow 5s ease-in-out infinite;
+}
+
+.animate-float-reverse {
+  animation: floatReverse 6s ease-in-out infinite;
+}
+
+.animate-marquee {
+  display: flex;
+  width: max-content;
+  animation: marqueeScroll 28s linear infinite;
+}
+
+.animate-marquee:hover {
+  animation-play-state: paused;
+}
+
+/* Özel Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f5f3;
+}
+::-webkit-scrollbar-thumb {
+  background: #51a885;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #3b8265;
+}
