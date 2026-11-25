@@ -563,9 +563,9 @@ export default function AdminDashboardPage() {
         />
       )}
 
-      {/* SOL YAN MENÜ */}
+      {/* SOL YAN MENÜ (EKRAN BOYUNDA SABİT - SÜNMEZ) */}
       <aside
-        className={`fixed lg:static inset-y-0 left-0 z-50 w-72 bg-slate-900 text-slate-200 flex flex-col transition-transform duration-300 print:hidden ${
+        className={`fixed lg:sticky lg:top-0 lg:h-screen shrink-0 inset-y-0 left-0 z-50 w-72 bg-slate-900 text-slate-200 flex flex-col transition-transform duration-300 print:hidden ${
           sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         }`}
       >
@@ -1499,7 +1499,6 @@ export default function AdminDashboardPage() {
           {/* 8. KURUMSAL SAYFALAR YÖNETİCİSİ */}
           {activeSection === 'corporate' && (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-              {/* SOL: Kurumsal Sayfa Ekle / Düzenle Formu */}
               <div className="lg:col-span-6 bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-4 h-fit">
                 <div className="flex items-center justify-between">
                   <h3 className="text-base font-extrabold text-slate-900">
@@ -1653,7 +1652,6 @@ export default function AdminDashboardPage() {
                 </form>
               </div>
 
-              {/* SAĞ: Mevcut Kurumsal Sayfalar Listesi */}
               <div className="lg:col-span-6 bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-4">
                 <div>
                   <h3 className="text-base font-extrabold text-slate-900">
@@ -2351,7 +2349,7 @@ export default function AdminDashboardPage() {
             </div>
           )}
 
-          {/* 13. GENEL AYARLAR, WHATSAPP MESAJI VE SANAL POS */}
+          {/* 13. GENEL AYARLAR, WHATSAPP, SOSYAL MEDYA VE GOOGLE YORUMLARI */}
           {activeSection === 'settings' && (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
               <form
@@ -2521,6 +2519,319 @@ export default function AdminDashboardPage() {
                     />
                   </label>
                 ))}
+              </div>
+
+              {/* SOSYAL MEDYA HESAPLARI (+ İLE ARTIRILABİLİR) */}
+              <div className="lg:col-span-6 bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-4">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <h3 className="text-base font-extrabold text-slate-900">Sosyal Medya Hesapları</h3>
+                    <p className="text-xs text-slate-500">
+                      Eklediğiniz hesaplar hem Footer&apos;da hem sağ kenardaki yüzen barda otomatik görünür.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const current = Array.isArray(generalSettings.social_links)
+                        ? generalSettings.social_links
+                        : [
+                            {
+                              id: 'ig',
+                              platform: 'instagram',
+                              label: 'Instagram',
+                              url: generalSettings.instagram_url || 'https://www.instagram.com/dietboxtr/',
+                            },
+                            {
+                              id: 'fb',
+                              platform: 'facebook',
+                              label: 'Facebook',
+                              url: generalSettings.facebook_url || 'https://www.facebook.com/dietboxtr/',
+                            },
+                          ]
+                      setGeneralSettings({
+                        ...generalSettings,
+                        social_links: [
+                          ...current,
+                          { id: `soc-${Date.now()}`, platform: 'instagram', label: 'Instagram', url: '' },
+                        ],
+                      })
+                    }}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-2 rounded-xl flex items-center gap-1.5 cursor-pointer shrink-0"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Hesap Ekle
+                  </button>
+                </div>
+
+                <div className="space-y-2.5">
+                  {(Array.isArray(generalSettings.social_links)
+                    ? generalSettings.social_links
+                    : [
+                        {
+                          id: 'ig',
+                          platform: 'instagram',
+                          label: 'Instagram',
+                          url: generalSettings.instagram_url || 'https://www.instagram.com/dietboxtr/',
+                        },
+                        {
+                          id: 'fb',
+                          platform: 'facebook',
+                          label: 'Facebook',
+                          url: generalSettings.facebook_url || 'https://www.facebook.com/dietboxtr/',
+                        },
+                      ]
+                  ).map((soc: any, idx: number, arr: any[]) => (
+                    <div
+                      key={soc.id || idx}
+                      className="grid grid-cols-12 gap-2 items-center bg-slate-50 p-2.5 rounded-xl border border-slate-200"
+                    >
+                      <select
+                        value={soc.platform}
+                        onChange={(e) => {
+                          const p = e.target.value
+                          const labels: Record<string, string> = {
+                            instagram: 'Instagram',
+                            facebook: 'Facebook',
+                            youtube: 'YouTube',
+                            tiktok: 'TikTok',
+                            x: 'X (Twitter)',
+                            linkedin: 'LinkedIn',
+                            other: 'Diğer',
+                          }
+                          const next = arr.map((item, i) =>
+                            i === idx ? { ...item, platform: p, label: labels[p] || 'Sosyal Medya' } : item
+                          )
+                          setGeneralSettings({ ...generalSettings, social_links: next })
+                        }}
+                        className="col-span-4 border border-slate-300 bg-white rounded-lg px-2 py-1.5 text-xs font-bold"
+                      >
+                        <option value="instagram">Instagram</option>
+                        <option value="facebook">Facebook</option>
+                        <option value="youtube">YouTube</option>
+                        <option value="tiktok">TikTok</option>
+                        <option value="x">X (Twitter)</option>
+                        <option value="linkedin">LinkedIn</option>
+                        <option value="other">Diğer</option>
+                      </select>
+
+                      <input
+                        type="url"
+                        placeholder="https://..."
+                        value={soc.url || ''}
+                        onChange={(e) => {
+                          const next = arr.map((item, i) =>
+                            i === idx ? { ...item, url: e.target.value } : item
+                          )
+                          setGeneralSettings({ ...generalSettings, social_links: next })
+                        }}
+                        className="col-span-7 border border-slate-300 bg-white rounded-lg px-2.5 py-1.5 text-xs"
+                      />
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const next = arr.filter((_, i) => i !== idx)
+                          setGeneralSettings({ ...generalSettings, social_links: next })
+                        }}
+                        className="col-span-1 text-red-500 hover:bg-red-50 p-1.5 rounded-lg flex justify-center cursor-pointer"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await fetch('/api/admin', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        action: 'save_system_setting',
+                        payload: { key: 'general_settings', value: generalSettings },
+                      }),
+                    })
+                    alert('Sosyal medya hesapları kaydedildi!')
+                  }}
+                  className="bg-slate-900 hover:bg-emerald-600 text-white font-bold px-5 py-2.5 rounded-xl text-xs flex items-center gap-2 cursor-pointer transition"
+                >
+                  <Save className="w-4 h-4" />
+                  Sosyal Medya Linklerini Kaydet
+                </button>
+              </div>
+
+              {/* GOOGLE YORUMLARI YÖNETİCİSİ */}
+              <div className="lg:col-span-6 bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-4">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <h3 className="text-base font-extrabold text-slate-900">Google Yorumları Yönetimi</h3>
+                    <p className="text-xs text-slate-500">
+                      Google puanınızı ve öne çıkarmak istediğiniz müşteri yorumlarını buradan yönetin.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const current = Array.isArray(generalSettings.google_reviews)
+                        ? generalSettings.google_reviews
+                        : []
+                      setGeneralSettings({
+                        ...generalSettings,
+                        google_reviews: [
+                          ...current,
+                          { id: `rev-${Date.now()}`, author: '', rating: 5, dateText: 'Yeni', text: '' },
+                        ],
+                      })
+                    }}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-2 rounded-xl flex items-center gap-1.5 cursor-pointer shrink-0"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Yorum Ekle
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-600 mb-1">Google Puanı</label>
+                    <input
+                      type="text"
+                      value={generalSettings.google_rating || '4.6'}
+                      onChange={(e) =>
+                        setGeneralSettings({ ...generalSettings, google_rating: e.target.value })
+                      }
+                      className="w-full border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-bold"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-600 mb-1">Toplam Yorum</label>
+                    <input
+                      type="text"
+                      value={generalSettings.google_review_count || '14'}
+                      onChange={(e) =>
+                        setGeneralSettings({
+                          ...generalSettings,
+                          google_review_count: e.target.value,
+                        })
+                      }
+                      className="w-full border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-bold"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-600 mb-1">Google Maps Linki</label>
+                    <input
+                      type="text"
+                      value={generalSettings.google_maps_url || 'https://maps.app.goo.gl/SWfPdg6TxhcJ2LYK9'}
+                      onChange={(e) =>
+                        setGeneralSettings({
+                          ...generalSettings,
+                          google_maps_url: e.target.value,
+                        })
+                      }
+                      className="w-full border border-slate-300 rounded-xl px-3 py-1.5 text-xs"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
+                  {(!Array.isArray(generalSettings.google_reviews) ||
+                    generalSettings.google_reviews.length === 0) && (
+                    <p className="text-xs text-slate-500 bg-slate-50 border border-dashed border-slate-300 rounded-xl p-3">
+                      Henüz özel yorum eklenmedi (ön yüzde varsayılan 3 yorum gösteriliyor). Yukarıdan <strong>+ Yorum Ekle</strong> diyerek kendi yorumlarınızı girebilirsiniz.
+                    </p>
+                  )}
+                  {(Array.isArray(generalSettings.google_reviews)
+                    ? generalSettings.google_reviews
+                    : []
+                  ).map((rev: any, idx: number, arr: any[]) => (
+                    <div
+                      key={rev.id || idx}
+                      className="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-2"
+                    >
+                      <div className="grid grid-cols-12 gap-2 items-center">
+                        <input
+                          type="text"
+                          placeholder="Müşteri Adı (Örn: Ayşe K.)"
+                          value={rev.author || ''}
+                          onChange={(e) => {
+                            const next = arr.map((r, i) =>
+                              i === idx ? { ...r, author: e.target.value } : r
+                            )
+                            setGeneralSettings({ ...generalSettings, google_reviews: next })
+                          }}
+                          className="col-span-5 border border-slate-300 bg-white rounded-lg px-2.5 py-1.5 text-xs font-bold"
+                        />
+                        <input
+                          type="text"
+                          placeholder="Tarih (Örn: 2 hafta önce)"
+                          value={rev.dateText || ''}
+                          onChange={(e) => {
+                            const next = arr.map((r, i) =>
+                              i === idx ? { ...r, dateText: e.target.value } : r
+                            )
+                            setGeneralSettings({ ...generalSettings, google_reviews: next })
+                          }}
+                          className="col-span-4 border border-slate-300 bg-white rounded-lg px-2.5 py-1.5 text-xs"
+                        />
+                        <input
+                          type="number"
+                          min={1}
+                          max={5}
+                          value={rev.rating ?? 5}
+                          onChange={(e) => {
+                            const next = arr.map((r, i) =>
+                              i === idx ? { ...r, rating: Number(e.target.value) } : r
+                            )
+                            setGeneralSettings({ ...generalSettings, google_reviews: next })
+                          }}
+                          className="col-span-2 border border-slate-300 bg-white rounded-lg px-2 py-1.5 text-xs font-bold text-center"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const next = arr.filter((_, i) => i !== idx)
+                            setGeneralSettings({ ...generalSettings, google_reviews: next })
+                          }}
+                          className="col-span-1 text-red-500 flex justify-center cursor-pointer"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                      <textarea
+                        rows={2}
+                        placeholder="Yorum metni..."
+                        value={rev.text || ''}
+                        onChange={(e) => {
+                          const next = arr.map((r, i) =>
+                            i === idx ? { ...r, text: e.target.value } : r
+                          )
+                          setGeneralSettings({ ...generalSettings, google_reviews: next })
+                        }}
+                        className="w-full border border-slate-300 bg-white rounded-lg px-2.5 py-1.5 text-xs"
+                      />
+                    </div>
+                  ))}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await fetch('/api/admin', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        action: 'save_system_setting',
+                        payload: { key: 'general_settings', value: generalSettings },
+                      }),
+                    })
+                    alert('Google yorumları kaydedildi!')
+                  }}
+                  className="bg-slate-900 hover:bg-emerald-600 text-white font-bold px-5 py-2.5 rounded-xl text-xs flex items-center gap-2 cursor-pointer transition"
+                >
+                  <Save className="w-4 h-4" />
+                  Google Yorumlarını Kaydet
+                </button>
               </div>
             </div>
           )}

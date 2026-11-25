@@ -3,11 +3,14 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 import { Cookie, ShieldCheck, SlidersHorizontal, X, Check } from 'lucide-react'
 
 const STORAGE_KEY = 'dietbox_cookie_consent_v1'
 
 export default function CookieConsent() {
+  const pathname = usePathname()
+  const isHiddenRoute = pathname?.startsWith('/admin') || pathname?.startsWith('/kurye')
   const [visible, setVisible] = useState(false)
   const [showPrefs, setShowPrefs] = useState(false)
   const [analytics, setAnalytics] = useState(true)
@@ -30,7 +33,7 @@ export default function CookieConsent() {
     setShowPrefs(false)
   }
 
-  if (!visible) return null
+  if (!visible || isHiddenRoute) return null
 
   return (
     <div className="fixed bottom-4 left-4 right-4 sm:right-auto sm:max-w-lg z-50 animate-in fade-in slide-in-from-bottom-4 duration-300">

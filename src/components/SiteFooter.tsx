@@ -3,6 +3,12 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import { usePathname } from 'next/navigation'
+import GoogleReviewsSection from '@/components/GoogleReviewsSection'
+import FloatingSocialBar, {
+  getActiveSocialLinks,
+  SocialPlatformIcon,
+} from '@/components/SocialLinksBar'
 import {
   Mail,
   Phone,
@@ -36,6 +42,8 @@ export default function SiteFooter({ generalSettings }: { generalSettings?: any 
     return () => window.removeEventListener('scroll', onScroll)
   }, [])
 
+  const pathname = usePathname()
+  const socialLinks = getActiveSocialLinks(generalSettings)
   const phoneRaw = generalSettings?.phone || '0 216 367 24 13'
   const phoneDial = phoneRaw.replace(/\s+/g, '')
   const whatsappRaw = (generalSettings?.whatsapp || '905421482021').replace(/\D/g, '')
@@ -44,10 +52,19 @@ export default function SiteFooter({ generalSettings }: { generalSettings?: any 
       'Merhaba DietBox, diyet paketleriniz hakkında bilgi almak istiyorum.'
   )
 
+  const showGoogleReviews =
+    pathname === '/' ||
+    pathname?.startsWith('/kurumsal/hakkimizda') ||
+    pathname === '/paketler' ||
+    pathname === '/iletisim'
+
   const scrollingSuppliers = [...SUPPLIERS, ...SUPPLIERS]
 
   return (
     <div className="mt-20">
+      {/* 0. GOOGLE MÜŞTERİ YORUMLARI */}
+      {showGoogleReviews && <GoogleReviewsSection generalSettings={generalSettings} />}
+
       {/* 1. SONSUZ KAYAN (MARQUEE) TEDARİKÇİLERİMİZ BANDI */}
       <section className="bg-white border-y border-slate-200/90 py-12 overflow-hidden">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 mb-8 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
@@ -293,29 +310,25 @@ export default function SiteFooter({ generalSettings }: { generalSettings?: any 
             </ul>
           </div>
 
-          {/* Sütun 5: Sosyal Medya & Güvenli Ödeme */}
+          {/* Sütun 5: Dinamik Sosyal Medya & Güvenli Ödeme */}
           <div className="lg:col-span-2 space-y-5">
             <div>
               <h4 className="text-white font-black text-sm uppercase tracking-wider mb-3">
                 SOSYAL MEDYA
               </h4>
-              <div className="flex items-center gap-3">
-                <a
-                  href={generalSettings?.facebook_url || 'https://www.facebook.com/dietboxtr/'}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="w-10 h-10 rounded-xl bg-white/10 hover:bg-[#51a885] text-white flex items-center justify-center font-black transition"
-                >
-                  f
-                </a>
-                <a
-                  href={generalSettings?.instagram_url || 'https://www.instagram.com/dietboxtr/'}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="w-10 h-10 rounded-xl bg-white/10 hover:bg-[#eab130] hover:text-slate-950 text-white flex items-center justify-center font-black transition"
-                >
-                  IG
-                </a>
+              <div className="flex flex-wrap items-center gap-2.5">
+                {socialLinks.map((item) => (
+                  <a
+                    key={item.id}
+                    href={item.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    title={item.label}
+                    className="w-10 h-10 rounded-xl bg-white/10 hover:bg-[#51a885] text-white flex items-center justify-center transition"
+                  >
+                    <SocialPlatformIcon platform={item.platform} />
+                  </a>
+                ))}
               </div>
             </div>
 
@@ -392,6 +405,9 @@ export default function SiteFooter({ generalSettings }: { generalSettings?: any 
           <span>WhatsApp Destek 🍍</span>
         </a>
       </div>
+
+      {/* 5. SAĞ ORTA YÜZEN SOSYAL MEDYA ŞERİDİ */}
+      <FloatingSocialBar generalSettings={generalSettings} />
     </div>
   )
 }
