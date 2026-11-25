@@ -35,6 +35,7 @@ import {
   LogOut,
   Lock,
   Mail,
+  FileText,
 } from 'lucide-react'
 
 type AdminSection =
@@ -46,9 +47,23 @@ type AdminSection =
   | 'customers'
   | 'locations'
   | 'menus'
+  | 'corporate'
   | 'calendar'
   | 'admins'
   | 'settings'
+
+function slugifyTR(text: string) {
+  return text
+    .toLowerCase()
+    .replace(/ğ/g, 'g')
+    .replace(/ü/g, 'u')
+    .replace(/ş/g, 's')
+    .replace(/ı/g, 'i')
+    .replace(/ö/g, 'o')
+    .replace(/ç/g, 'c')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+}
 
 export default function AdminDashboardPage() {
   // Admin Güvenlik & Oturum State'i
@@ -72,6 +87,7 @@ export default function AdminDashboardPage() {
   const [deliveries, setDeliveries] = useState<any[]>([])
   const [calendarBlocks, setCalendarBlocks] = useState<any[]>([])
   const [navMenus, setNavMenus] = useState<any[]>([])
+  const [corporatePages, setCorporatePages] = useState<any[]>([])
   const [adminUsersList, setAdminUsersList] = useState<any[]>([])
   const [contactMessages, setContactMessages] = useState<any[]>([])
 
@@ -121,6 +137,24 @@ export default function AdminDashboardPage() {
     is_active: boolean
   }>({ parent_id: '', title: '', url: '', sort_order: 1, is_active: true })
 
+  // Kurumsal Sayfa Form State
+  const [corpForm, setCorpForm] = useState<{
+    id?: number
+    slug: string
+    title: string
+    subtitle: string
+    content: string
+    sort_order: number
+    is_active: boolean
+  }>({
+    slug: '',
+    title: '',
+    subtitle: '',
+    content: '',
+    sort_order: 1,
+    is_active: true,
+  })
+
   const [newAdminForm, setNewAdminForm] = useState({
     full_name: '',
     email: '',
@@ -155,6 +189,7 @@ export default function AdminDashboardPage() {
       delRes,
       blkRes,
       menuRes,
+      corpRes,
       admRes,
       msgRes,
       genSetRes,
@@ -169,6 +204,7 @@ export default function AdminDashboardPage() {
       supabase.from('order_deliveries').select('*, orders(*)').order('delivery_date'),
       supabase.from('calendar_blocks').select('*').order('blocked_date'),
       supabase.from('navigation_menus').select('*').order('sort_order'),
+      supabase.from('corporate_pages').select('*').order('sort_order'),
       supabase.from('admin_users').select('*').order('id'),
       supabase.from('contact_messages').select('*').order('created_at', { ascending: false }),
       supabase.from('system_settings').select('value').eq('key', 'general_settings').single(),
@@ -184,6 +220,7 @@ export default function AdminDashboardPage() {
     setDeliveries(delRes.data || [])
     setCalendarBlocks(blkRes.data || [])
     setNavMenus(menuRes.data || [])
+    setCorporatePages(corpRes.data || [])
     setAdminUsersList(admRes.data || [])
     setContactMessages(msgRes.data || [])
 
@@ -383,12 +420,7 @@ export default function AdminDashboardPage() {
   const handleSavePackageModal = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!editingPkg) return
-    const autoSlug =
-      editingPkg.slug ||
-      editingPkg.title
-        .toLowerCase()
-        .replace(/[^a-z0-9ğüşıöç]+/g, '-')
-        .replace(/^-|-$/g, '')
+    const autoSlug = editingPkg.slug || slugifyTR(editingPkg.title)
 
     const res = await fetch('/api/admin', {
       method: 'POST',
@@ -416,6 +448,7 @@ export default function AdminDashboardPage() {
     { id: 'orders', label: 'Siparişler & Dondurma', icon: ShoppingBag, badge: orders.length },
     { id: 'customers', label: 'Müşteriler & Mesajlar', icon: Users, badge: stats.customers.length },
     { id: 'locations', label: 'İl / İlçe / Mahalle Lojistik', icon: MapPin, badge: neighborhoods.length },
+    { id: 'corporate', label: 'Kurumsal Sayfalar', icon: FileText, badge: corporatePages.length },
     { id: 'menus', label: 'Menü Yöneticisi', icon: MenuIcon, badge: navMenus.length },
     { id: 'calendar', label: 'Tatil & Kota Kapatma', icon: CalendarOff },
     { id: 'admins', label: 'Yetkili Kullanıcılar', icon: ShieldAlert, badge: adminUsersList.length },
@@ -438,7 +471,7 @@ export default function AdminDashboardPage() {
     })
   }, [neighborhoods, selectedDistrictFilter, neighSearch])
 
-  // GÜVENLİ ADMİN GİRİŞ EKRANI (/admin şifre koruması)
+  // GÜVENLİ ADMİN GİRİŞ EKRANI
   if (!adminUser) {
     return (
       <main className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
@@ -620,7 +653,7 @@ export default function AdminDashboardPage() {
           <div className="flex items-center gap-3 text-xs">
             <span className="hidden sm:inline-flex items-center gap-1.5 bg-emerald-50 text-emerald-800 border border-emerald-200 px-3 py-1.5 rounded-full font-semibold">
               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-              {packages.length} Paket • {orders.length} Sipariş • {neighborhoods.length} Mahalle
+              {packages.length} Paket • {orders.length} Sipariş • {corporatePages.length} Kurumsal Sayfa
             </span>
           </div>
         </header>
@@ -819,7 +852,7 @@ export default function AdminDashboardPage() {
                     Diyet & Detoks Paketleri ({packages.length} Ürün)
                   </h2>
                   <p className="text-xs text-slate-500">
-                    Her paketin gün periyotlarına göre kademeli fiyatlarını, görselini (bilgisayardan yükleyerek) ve örnek menüsünü düzenleyebilirsiniz.
+                    Her paketin gün periyotlarına göre kademeli fiyatlarını, görselini ve örnek menüsünü düzenleyebilirsiniz.
                   </p>
                 </div>
                 <button
@@ -915,7 +948,7 @@ export default function AdminDashboardPage() {
             </div>
           )}
 
-          {/* 4. ANASAYFA SLIDER YÖNETİCİSİ (RESİM, VİDEO VE YAZI) */}
+          {/* 4. ANASAYFA SLIDER YÖNETİCİSİ */}
           {activeSection === 'sliders' && (
             <div className="space-y-6">
               <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm flex flex-wrap items-center justify-between gap-4">
@@ -924,7 +957,7 @@ export default function AdminDashboardPage() {
                     Anasayfa Gelişmiş Slider Yöneticisi
                   </h2>
                   <p className="text-xs text-slate-500">
-                    Resim veya MP4 video yükleyebilir, sarı fiyat etiketini, başlıkları ve yönlendirme butonunu değiştirebilirsiniz.
+                    Resim veya MP4 video yükleyebilir, fiyat etiketini, başlıkları ve yönlendirme butonunu değiştirebilirsiniz.
                   </p>
                 </div>
                 <button
@@ -1446,7 +1479,271 @@ export default function AdminDashboardPage() {
             </div>
           )}
 
-          {/* 8. MENÜ YÖNETİCİSİ */}
+          {/* 8. KURUMSAL SAYFALAR YÖNETİCİSİ */}
+          {activeSection === 'corporate' && (
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+              {/* SOL: Kurumsal Sayfa Ekle / Düzenle Formu */}
+              <div className="lg:col-span-6 bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-4 h-fit">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-base font-extrabold text-slate-900">
+                    {corpForm.id ? 'Kurumsal Sayfayı Düzenle' : 'Yeni Kurumsal Sayfa Ekle'}
+                  </h3>
+                  {corpForm.id && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setCorpForm({
+                          slug: '',
+                          title: '',
+                          subtitle: '',
+                          content: '',
+                          sort_order: corporatePages.length + 1,
+                          is_active: true,
+                        })
+                      }
+                      className="text-xs font-bold text-slate-500 hover:text-slate-900 cursor-pointer"
+                    >
+                      + Yeni Sayfa Moduna Geç
+                    </button>
+                  )}
+                </div>
+
+                <form
+                  onSubmit={async (e) => {
+                    e.preventDefault()
+                    const finalSlug = slugifyTR(corpForm.slug || corpForm.title)
+                    const res = await fetch('/api/admin', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        action: 'save_corporate_page',
+                        payload: { ...corpForm, slug: finalSlug },
+                      }),
+                    })
+                    if (res.ok) {
+                      alert(`Kurumsal sayfa kaydedildi! Adres: /kurumsal/${finalSlug}`)
+                      setCorpForm({
+                        slug: '',
+                        title: '',
+                        subtitle: '',
+                        content: '',
+                        sort_order: corporatePages.length + 1,
+                        is_active: true,
+                      })
+                      fetchAllData()
+                    } else {
+                      const err = await res.json()
+                      alert(err.error || 'Kurumsal sayfa kaydedilemedi.')
+                    }
+                  }}
+                  className="space-y-3"
+                >
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      Sayfa Başlığı
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Örn: Teslimat Saatleri & Bölgelerimiz"
+                      value={corpForm.title}
+                      onChange={(e) => {
+                        const title = e.target.value
+                        setCorpForm({
+                          ...corpForm,
+                          title,
+                          slug: corpForm.id ? corpForm.slug : slugifyTR(title),
+                        })
+                      }}
+                      className="w-full border border-slate-300 rounded-xl px-3.5 py-2 text-sm font-bold"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="sm:col-span-2">
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        URL Kısa Adı (Slug)
+                      </label>
+                      <div className="flex items-center border border-slate-300 rounded-xl overflow-hidden bg-slate-50">
+                        <span className="px-2.5 text-xs text-slate-500 font-semibold border-r border-slate-200">
+                          /kurumsal/
+                        </span>
+                        <input
+                          type="text"
+                          required
+                          placeholder="teslimat-bilgisi"
+                          value={corpForm.slug}
+                          onChange={(e) =>
+                            setCorpForm({ ...corpForm, slug: slugifyTR(e.target.value) })
+                          }
+                          className="flex-1 bg-white px-2.5 py-2 text-xs font-bold focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Sıra</label>
+                      <input
+                        type="number"
+                        value={corpForm.sort_order}
+                        onChange={(e) =>
+                          setCorpForm({ ...corpForm, sort_order: Number(e.target.value) })
+                        }
+                        className="w-full border border-slate-300 rounded-xl px-3 py-2 text-xs"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      Alt Başlık / Kısa Özet
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Örn: İstanbul genelinde sabah 06:00 - 09:30 arası teslimat."
+                      value={corpForm.subtitle}
+                      onChange={(e) => setCorpForm({ ...corpForm, subtitle: e.target.value })}
+                      className="w-full border border-slate-300 rounded-xl px-3.5 py-2 text-xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      Sayfa İçeriği (Paragraflar arasında boş satır bırakabilirsiniz)
+                    </label>
+                    <textarea
+                      rows={10}
+                      required
+                      value={corpForm.content}
+                      onChange={(e) => setCorpForm({ ...corpForm, content: e.target.value })}
+                      placeholder="Sayfa metnini buraya yazın..."
+                      className="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs leading-relaxed"
+                    />
+                  </div>
+
+                  <label className="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={corpForm.is_active}
+                      onChange={(e) => setCorpForm({ ...corpForm, is_active: e.target.checked })}
+                      className="w-4 h-4 accent-emerald-600"
+                    />
+                    Sayfa Yayında (Aktif)
+                  </label>
+
+                  <button
+                    type="submit"
+                    className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl text-xs flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <Save className="w-4 h-4" />
+                    {corpForm.id ? 'Kurumsal Sayfayı Güncelle' : '+ Yeni Kurumsal Sayfa Oluştur'}
+                  </button>
+                </form>
+              </div>
+
+              {/* SAĞ: Mevcut Kurumsal Sayfalar Listesi */}
+              <div className="lg:col-span-6 bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-4">
+                <div>
+                  <h3 className="text-base font-extrabold text-slate-900">
+                    Kayıtlı Kurumsal Sayfalar ({corporatePages.length})
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Menü Yöneticisinde bu sayfalara bağlanmak için altlarında yazan <strong>/kurumsal/...</strong> adresini kullanın.
+                  </p>
+                </div>
+
+                {corporatePages.length === 0 ? (
+                  <p className="text-xs text-slate-500 py-8 text-center">
+                    Henüz kayıtlı kurumsal sayfa yok. Soldaki formdan ekleyebilir veya SQL başlangıç verisini çalıştırabilirsiniz.
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    {corporatePages.map((p) => (
+                      <div
+                        key={p.id}
+                        className="border border-slate-200 rounded-2xl p-4 bg-slate-50/50 space-y-2"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-extrabold text-slate-900 text-sm">
+                                {p.title}
+                              </span>
+                              <span
+                                className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                  p.is_active
+                                    ? 'bg-emerald-100 text-emerald-800'
+                                    : 'bg-slate-200 text-slate-600'
+                                }`}
+                              >
+                                {p.is_active ? 'Aktif' : 'Taslak'}
+                              </span>
+                            </div>
+                            <code className="text-[11px] text-emerald-700 font-bold block mt-1">
+                              /kurumsal/{p.slug}
+                            </code>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <a
+                              href={`/kurumsal/${p.slug}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              title="Sayfayı Ön Yüzde Aç"
+                              className="p-2 rounded-lg bg-white border border-slate-200 text-slate-600 hover:text-emerald-600"
+                            >
+                              <ExternalLink className="w-3.5 h-3.5" />
+                            </a>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setCorpForm({
+                                  id: p.id,
+                                  slug: p.slug,
+                                  title: p.title,
+                                  subtitle: p.subtitle || '',
+                                  content: p.content || '',
+                                  sort_order: p.sort_order || 1,
+                                  is_active: p.is_active ?? true,
+                                })
+                              }
+                              className="bg-slate-900 text-white text-xs font-bold px-3 py-1.5 rounded-lg cursor-pointer"
+                            >
+                              Düzenle
+                            </button>
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                if (!confirm(`"${p.title}" sayfasını silmek istediğinize emin misiniz?`))
+                                  return
+                                await fetch('/api/admin', {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({
+                                    action: 'delete_corporate_page',
+                                    payload: { id: p.id },
+                                  }),
+                                })
+                                fetchAllData()
+                              }}
+                              className="text-red-500 hover:bg-red-50 p-1.5 rounded-lg cursor-pointer"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+
+                        {p.subtitle && (
+                          <p className="text-xs text-slate-500 line-clamp-2">{p.subtitle}</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* 9. MENÜ YÖNETİCİSİ */}
           {activeSection === 'menus' && (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
               <div className="lg:col-span-5 bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-4 h-fit">
@@ -1522,7 +1819,7 @@ export default function AdminDashboardPage() {
                     <input
                       type="text"
                       required
-                      placeholder="Örn: /fiyatlarimiz veya /iletisim"
+                      placeholder="Örn: /kurumsal/hakkimizda"
                       value={menuForm.url}
                       onChange={(e) => setMenuForm({ ...menuForm, url: e.target.value })}
                       className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm"
@@ -1617,22 +1914,39 @@ export default function AdminDashboardPage() {
                                     &rarr; <strong>{ch.title}</strong>{' '}
                                     <span className="text-slate-400">({ch.url})</span>
                                   </span>
-                                  <button
-                                    onClick={async () => {
-                                      await fetch('/api/admin', {
-                                        method: 'POST',
-                                        headers: { 'Content-Type': 'application/json' },
-                                        body: JSON.stringify({
-                                          action: 'delete_menu_item',
-                                          payload: { id: ch.id },
-                                        }),
-                                      })
-                                      fetchAllData()
-                                    }}
-                                    className="text-red-500 font-bold"
-                                  >
-                                    Sil
-                                  </button>
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      onClick={() =>
+                                        setMenuForm({
+                                          id: ch.id,
+                                          parent_id: String(ch.parent_id || ''),
+                                          title: ch.title,
+                                          url: ch.url,
+                                          sort_order: ch.sort_order,
+                                          is_active: ch.is_active,
+                                        })
+                                      }
+                                      className="text-emerald-700 font-bold cursor-pointer"
+                                    >
+                                      Düzenle
+                                    </button>
+                                    <button
+                                      onClick={async () => {
+                                        await fetch('/api/admin', {
+                                          method: 'POST',
+                                          headers: { 'Content-Type': 'application/json' },
+                                          body: JSON.stringify({
+                                            action: 'delete_menu_item',
+                                            payload: { id: ch.id },
+                                          }),
+                                        })
+                                        fetchAllData()
+                                      }}
+                                      className="text-red-500 font-bold cursor-pointer"
+                                    >
+                                      Sil
+                                    </button>
+                                  </div>
                                 </div>
                               ))}
                             </div>
@@ -1645,7 +1959,7 @@ export default function AdminDashboardPage() {
             </div>
           )}
 
-          {/* 9. TATİL & KOTA KAPATMA */}
+          {/* 10. TATİL & KOTA KAPATMA */}
           {activeSection === 'calendar' && (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
               <div className="lg:col-span-5 bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-4">
@@ -1738,7 +2052,7 @@ export default function AdminDashboardPage() {
             </div>
           )}
 
-          {/* 10. YETKİLİ KULLANICILAR YÖNETİMİ */}
+          {/* 11. YETKİLİ KULLANICILAR YÖNETİMİ */}
           {activeSection === 'admins' && (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
               <div className="lg:col-span-5 bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-4 h-fit">
@@ -1853,7 +2167,7 @@ export default function AdminDashboardPage() {
             </div>
           )}
 
-          {/* 11. GENEL AYARLAR, WHATSAPP MESAJI VE SANAL POS */}
+          {/* 12. GENEL AYARLAR, WHATSAPP MESAJI VE SANAL POS */}
           {activeSection === 'settings' && (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
               <form
@@ -2029,7 +2343,7 @@ export default function AdminDashboardPage() {
         </main>
       </div>
 
-      {/* MODAL 1: ÜRÜN DÜZENLEME (BİLGİSAYARDAN RESİM YÜKLEME + KADEMELİ FİYATLAR + ÖRNEK MENÜ) */}
+      {/* MODAL 1: ÜRÜN DÜZENLEME */}
       {editingPkg && (
         <div className="fixed inset-0 bg-slate-950/70 z-50 flex items-center justify-center p-4 overflow-y-auto">
           <form
@@ -2112,7 +2426,6 @@ export default function AdminDashboardPage() {
                 />
               </div>
 
-              {/* Bilgisayardan Görsel Yükleme + URL Alanı */}
               <div className="sm:col-span-3 space-y-2">
                 <label className="block text-xs font-bold text-slate-700">
                   Paket Kapak Görseli (Bilgisayardan Yükle veya URL Gir)
@@ -2171,7 +2484,6 @@ export default function AdminDashboardPage() {
               </div>
             </div>
 
-            {/* BAĞIMSIZ / KADEMELİ PERİYOT FİYATLARI */}
             <div className="bg-emerald-50/60 border border-emerald-200 rounded-2xl p-5 space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
@@ -2272,7 +2584,6 @@ export default function AdminDashboardPage() {
               </div>
             </div>
 
-            {/* ÖRNEK MENÜ DÜZENLEYİCİ */}
             <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-3">
               <div className="flex items-center justify-between">
                 <h4 className="font-extrabold text-slate-900 text-sm">Örnek Menü İçeriği</h4>
@@ -2351,7 +2662,7 @@ export default function AdminDashboardPage() {
         </div>
       )}
 
-      {/* MODAL 2: SLIDER EKLEME / DÜZENLEME (RESİM & VİDEO YÜKLEMELİ) */}
+      {/* MODAL 2: SLIDER EKLEME / DÜZENLEME */}
       {editingSlide && (
         <div className="fixed inset-0 bg-slate-950/70 z-50 flex items-center justify-center p-4">
           <form
