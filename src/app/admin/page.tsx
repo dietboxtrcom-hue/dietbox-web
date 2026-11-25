@@ -60,7 +60,7 @@ export default function AdminDashboardPage() {
   const [activeSection, setActiveSection] = useState<AdminSection>('dashboard')
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [loading, setLoading] = useState(true)
-  const [selectedDate, setSelectedDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'))
+  const [selectedDate, setSelectedDate] = useState<string>('')
 
   // Veritabanı State'leri
   const [packages, setPackages] = useState<any[]>([])
@@ -134,6 +134,7 @@ export default function AdminDashboardPage() {
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null)
 
   useEffect(() => {
+    setSelectedDate(format(new Date(), 'yyyy-MM-dd'))
     const savedSession = sessionStorage.getItem('dietbox_admin_session')
     if (savedSession) {
       setAdminUser(JSON.parse(savedSession))
