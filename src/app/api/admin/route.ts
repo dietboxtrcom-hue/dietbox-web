@@ -445,7 +445,33 @@ export async function POST(request: Request) {
         .eq('id', deliveryId)
       return NextResponse.json({ success: true })
     }
+// 11. KURUMSAL SAYFA EKLEME / DÜZENLEME / SİLME
+    if (action === 'save_corporate_page') {
+      const { id, slug, title, subtitle, content, sort_order, is_active } = payload
+      const rec = {
+        slug: (slug || '').trim().toLowerCase(),
+        title: (title || '').trim(),
+        subtitle: subtitle || '',
+        content: content || '',
+        sort_order: Number(sort_order || 1),
+        is_active: is_active ?? true,
+        updated_at: new Date().toISOString(),
+      }
+      if (id) {
+        const { error } = await supabase.from('corporate_pages').update(rec).eq('id', id)
+        if (error) throw error
+      } else {
+        const { error } = await supabase.from('corporate_pages').insert(rec)
+        if (error) throw error
+      }
+      return NextResponse.json({ success: true })
+    }
 
+    if (action === 'delete_corporate_page') {
+      const { error } = await supabase.from('corporate_pages').delete().eq('id', payload.id)
+      if (error) throw error
+      return NextResponse.json({ success: true })
+    }
     return NextResponse.json({ error: 'Geçersiz işlem' }, { status: 400 })
   } catch (err: any) {
     return NextResponse.json({ error: err?.message || 'Sunucu hatası' }, { status: 500 })
