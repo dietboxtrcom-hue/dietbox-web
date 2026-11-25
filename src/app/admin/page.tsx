@@ -38,6 +38,8 @@ import {
   Lock,
   Mail,
   FileText,
+  Activity,
+  Eye,
 } from 'lucide-react'
 
 type AdminSection =
@@ -48,6 +50,7 @@ type AdminSection =
   | 'sliders'
   | 'orders'
   | 'customers'
+  | 'logs'
   | 'locations'
   | 'menus'
   | 'corporate'
@@ -94,6 +97,8 @@ export default function AdminDashboardPage() {
   const [faqs, setFaqs] = useState<any[]>([])
   const [adminUsersList, setAdminUsersList] = useState<any[]>([])
   const [contactMessages, setContactMessages] = useState<any[]>([])
+  const [profiles, setProfiles] = useState<any[]>([])
+  const [activityLogs, setActivityLogs] = useState<any[]>([])
 
   const [generalSettings, setGeneralSettings] = useState<any>({
     site_title: 'DietBox | Adrese Teslim Diyet Yemekleri Servisi',
@@ -123,6 +128,8 @@ export default function AdminDashboardPage() {
   // Modallar ve Form State'leri
   const [editingPkg, setEditingPkg] = useState<any | null>(null)
   const [editingSlide, setEditingSlide] = useState<any | null>(null)
+  const [selectedCustomer, setSelectedCustomer] = useState<any | null>(null)
+  const [logFilter, setLogFilter] = useState('')
 
   const [selectedCityFilter, setSelectedCityFilter] = useState<number>(1)
   const [selectedDistrictFilter, setSelectedDistrictFilter] = useState<number>(1)
@@ -208,6 +215,8 @@ export default function AdminDashboardPage() {
       msgRes,
       genSetRes,
       posSetRes,
+      profRes,
+      logRes,
     ] = await Promise.all([
       supabase.from('packages').select('*').order('sort_order'),
       supabase.from('faqs').select('*').order('sort_order'),
@@ -224,6 +233,8 @@ export default function AdminDashboardPage() {
       supabase.from('contact_messages').select('*').order('created_at', { ascending: false }),
       supabase.from('system_settings').select('value').eq('key', 'general_settings').single(),
       supabase.from('system_settings').select('value').eq('key', 'pos_config').single(),
+      supabase.from('profiles').select('*').order('created_at', { ascending: false }),
+      supabase.from('activity_logs').select('*').order('created_at', { ascending: false }).limit(500),
     ])
 
     setPackages(pkgRes.data || [])
@@ -239,6 +250,15 @@ export default function AdminDashboardPage() {
     setCorporatePages(corpRes.data || [])
     setAdminUsersList(admRes.data || [])
     setContactMessages(msgRes.data || [])
+    setProfiles(profRes.data || [])
+    // Logları doğrudan sunucu API'sinden çek (RLS / cache takılmasını önler)
+    try {
+      const trackRes = await fetch('/api/track', { cache: 'no-store' })
+      const trackJson = await trackRes.json()
+      setActivityLogs(trackJson.logs || logRes.data || [])
+    } catch {
+      setActivityLogs(logRes.data || [])
+    }
 
     if (genSetRes.data?.value) setGeneralSettings(genSetRes.data.value)
     if (posSetRes.data?.value) setPosConfig(posSetRes.data.value)
@@ -311,7 +331,7 @@ export default function AdminDashboardPage() {
 
     const customerMap = new Map<string, any>()
     orders.forEach((o) => {
-      const key = o.customer_phone || o.customer_name
+      const key = (o.customer_email || o.customer_phone || o.customer_name || '').toLowerCase()
       if (!customerMap.has(key)) {
         customerMap.set(key, {
           name: o.customer_name,
@@ -333,6 +353,27 @@ export default function AdminDashboardPage() {
       }
     })
 
+    // Henüz siparişi olmayan kayıtlı üyeleri (profiles) de müşteri listesine dahil et
+    profiles.forEach((p) => {
+      const key = (p.email || p.phone || p.full_name || p.id || '').toLowerCase()
+      if (!key) return
+      if (!customerMap.has(key)) {
+        customerMap.set(key, {
+          name: p.full_name || 'Kayıtlı Üye',
+          phone: p.phone || '-',
+          email: p.email || null,
+          district: p.district || '-',
+          neighborhood: p.neighborhood || '-',
+          address: p.full_address || '-',
+          height: p.height_cm || null,
+          weight: p.weight_kg || null,
+          notes: p.allergy_notes || null,
+          orderCount: 0,
+          totalSpent: 0,
+        })
+      }
+    })
+
     return {
       totalRevenue,
       activeOrdersCount,
@@ -340,7 +381,7 @@ export default function AdminDashboardPage() {
       expiringSoon,
       customers: Array.from(customerMap.values()),
     }
-  }, [orders, dailyDispatchList])
+  }, [orders, profiles, dailyDispatchList])
 
   const handleExportExcel = () => {
     if (dailyDispatchList.length === 0) {
@@ -463,6 +504,7 @@ export default function AdminDashboardPage() {
     { id: 'sliders', label: 'Anasayfa Slider (Resim/Video)', icon: Images, badge: sliders.length },
     { id: 'orders', label: 'Siparişler & Dondurma', icon: ShoppingBag, badge: orders.length },
     { id: 'customers', label: 'Müşteriler & Mesajlar', icon: Users, badge: stats.customers.length },
+    { id: 'logs', label: 'Aktivite & Gezinme Logları', icon: Activity, badge: activityLogs.length },
     { id: 'locations', label: 'İl / İlçe / Mahalle Lojistik', icon: MapPin, badge: neighborhoods.length },
     { id: 'corporate', label: 'Kurumsal Sayfalar', icon: FileText, badge: corporatePages.length },
     { id: 'faqs', label: 'Sıkça Sorulanlar (SSS)', icon: HelpCircle, badge: faqs.length },
@@ -494,11 +536,12 @@ export default function AdminDashboardPage() {
       <main className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
         <div className="bg-white rounded-3xl max-w-md w-full p-8 shadow-2xl space-y-6">
           <div className="text-center space-y-1">
-            <div className="text-3xl font-black text-emerald-600">
-              DIET <span className="text-slate-900">B🍍X</span>
+            <div className="text-2xl font-black tracking-tight">
+              <span className="text-[#51a885]">ELA</span>{' '}
+              <span className="text-slate-900">Teknoloji &amp; Tasarım</span>
             </div>
-            <p className="text-xs font-bold uppercase tracking-widest text-slate-400">
-              Yönetim ve Operasyon Paneli Girişi
+            <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-slate-400">
+              CYBER PANEL V2.0 • DietBox
             </p>
           </div>
 
@@ -570,12 +613,16 @@ export default function AdminDashboardPage() {
         }`}
       >
         <div className="p-5 border-b border-slate-800 flex items-center justify-between">
-          <div>
-            <Link href="/" className="font-black text-2xl tracking-tight text-emerald-400">
-              DIET<span className="text-white">BOX</span>
-            </Link>
-            <span className="block text-[11px] font-semibold text-slate-400 mt-0.5">
-              {adminUser.full_name}
+          <div className="space-y-1">
+            <div className="text-base font-black tracking-tight leading-none">
+              <span className="text-[#5ed3c6]">ELA</span>{' '}
+              <span className="text-white">Teknoloji &amp; Tasarım</span>
+            </div>
+            <span className="block text-[10px] font-bold tracking-[0.22em] text-[#5ed3c6] uppercase">
+              CYBER PANEL V2.0
+            </span>
+            <span className="block text-[11px] font-medium text-slate-400 pt-1">
+              {adminUser.full_name} • DietBox
             </span>
           </div>
           <button
@@ -624,6 +671,8 @@ export default function AdminDashboardPage() {
         <div className="p-4 border-t border-slate-800 space-y-2">
           <Link
             href="/kurye"
+            target="_blank"
+            rel="noopener noreferrer"
             className="w-full bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 text-xs font-bold py-2.5 px-3 rounded-xl flex items-center justify-center gap-2 transition"
           >
             <Truck className="w-4 h-4" />
@@ -633,6 +682,8 @@ export default function AdminDashboardPage() {
           <div className="grid grid-cols-2 gap-2">
             <Link
               href="/"
+              target="_blank"
+              rel="noopener noreferrer"
               className="bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold py-2 px-3 rounded-xl flex items-center justify-center gap-1.5"
             >
               <Globe className="w-3.5 h-3.5" />
@@ -670,7 +721,7 @@ export default function AdminDashboardPage() {
           <div className="flex items-center gap-3 text-xs">
             <span className="hidden sm:inline-flex items-center gap-1.5 bg-emerald-50 text-emerald-800 border border-emerald-200 px-3 py-1.5 rounded-full font-semibold">
               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-              {packages.length} Paket • {orders.length} Sipariş • {corporatePages.length} Kurumsal • {faqs.length} SSS
+              {packages.length} Paket • {orders.length} Sipariş • {stats.customers.length} Müşteri • {activityLogs.length} Log
             </span>
           </div>
         </header>
@@ -1157,19 +1208,24 @@ export default function AdminDashboardPage() {
             </div>
           )}
 
-          {/* 6. MÜŞTERİLER (CRM) VE İLETİŞİM FORMU MESAJLARI */}
+          {/* 6. MÜŞTERİLER (CRM - DETAY MODALLI) VE İLETİŞİM MESAJLARI */}
           {activeSection === 'customers' && (
             <div className="space-y-6">
               <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-4">
-                <h2 className="text-lg font-extrabold text-slate-900">
-                  Müşteri Listesi ({stats.customers.length} Kişi)
-                </h2>
+                <div>
+                  <h2 className="text-lg font-extrabold text-slate-900">
+                    Müşteri Listesi ({stats.customers.length} Kişi)
+                  </h2>
+                  <p className="text-xs text-slate-500">
+                    Detaylı sipariş geçmişini ve incelediği sayfaları görmek için müşteriye tıklayın.
+                  </p>
+                </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-left border-collapse text-xs sm:text-sm">
                     <thead>
                       <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold">
                         <th className="p-3">Müşteri Adı</th>
-                        <th className="p-3">Telefon & E-Posta</th>
+                        <th className="p-3">Telefon &amp; E-Posta</th>
                         <th className="p-3">Bölge / Mahalle</th>
                         <th className="p-3">Boy / Kilo</th>
                         <th className="p-3">Alerjen / Not</th>
@@ -1178,7 +1234,11 @@ export default function AdminDashboardPage() {
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {stats.customers.map((c, i) => (
-                        <tr key={i} className="hover:bg-slate-50">
+                        <tr
+                          key={i}
+                          onClick={() => setSelectedCustomer(c)}
+                          className="hover:bg-emerald-50/50 cursor-pointer transition"
+                        >
                           <td className="p-3 font-bold text-slate-900">{c.name}</td>
                           <td className="p-3">
                             <span className="block font-semibold">{c.phone}</span>
@@ -1193,7 +1253,20 @@ export default function AdminDashboardPage() {
                           </td>
                           <td className="p-3 text-xs text-red-600">{c.notes || '-'}</td>
                           <td className="p-3 font-extrabold text-emerald-700">
-                            {formatTRY(c.totalSpent)}
+                            <div className="flex items-center justify-between gap-2">
+                              <span>{formatTRY(c.totalSpent)}</span>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setSelectedCustomer(c)
+                                }}
+                                className="bg-slate-900 hover:bg-emerald-600 text-white text-[11px] font-bold px-2.5 py-1.5 rounded-lg inline-flex items-center gap-1 cursor-pointer"
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                                Detay
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -1227,7 +1300,126 @@ export default function AdminDashboardPage() {
             </div>
           )}
 
-          {/* 7. İL, İLÇE VE MAHALLE LOJİSTİK YÖNETİMİ */}
+          {/* 7. AKTİVİTE & GEZİNME LOGLARI */}
+          {activeSection === 'logs' && (
+            <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-5">
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-lg font-extrabold text-slate-900">
+                    Müşteri &amp; Ziyaretçi Aktivite Logları ({activityLogs.length})
+                  </h2>
+                  <p className="text-xs text-slate-500">
+                    Hangi müşteri veya ziyaretçi hangi sayfaya, hangi pakete ne zaman bakmış anlık takip edin.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                  <div className="relative flex-1 sm:w-80">
+                    <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-2.5" />
+                    <input
+                      type="text"
+                      placeholder="Müşteri adı, e-posta, sayfa veya paket ara..."
+                      value={logFilter}
+                      onChange={(e) => setLogFilter(e.target.value)}
+                      className="w-full border border-slate-300 rounded-xl pl-10 pr-4 py-2 text-xs"
+                    />
+                  </div>
+                  {logFilter && (
+                    <button
+                      type="button"
+                      onClick={() => setLogFilter('')}
+                      className="text-xs font-bold text-slate-500 hover:text-slate-900 px-2 py-2 cursor-pointer"
+                    >
+                      Temizle
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold">
+                      <th className="p-3">Tarih / Saat</th>
+                      <th className="p-3">Müşteri / Ziyaretçi</th>
+                      <th className="p-3">İşlem Türü</th>
+                      <th className="p-3">İncelenen Sayfa (URL)</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {activityLogs
+                      .filter((l) => {
+                        const q = logFilter.trim().toLowerCase()
+                        if (!q) return true
+                        return (
+                          (l.customer_name || '').toLowerCase().includes(q) ||
+                          (l.customer_email || '').toLowerCase().includes(q) ||
+                          (l.visitor_id || '').toLowerCase().includes(q) ||
+                          (l.path || '').toLowerCase().includes(q)
+                        )
+                      })
+                      .map((log) => (
+                        <tr key={log.id} className="hover:bg-slate-50">
+                          <td className="p-3 font-mono text-[11px] text-slate-500 whitespace-nowrap">
+                            {new Date(log.created_at).toLocaleString('tr-TR')}
+                          </td>
+                          <td className="p-3">
+                            {log.customer_email ? (
+                              <div>
+                                <strong className="text-slate-900 block">
+                                  {log.customer_name || 'Kayıtlı Üye'}
+                                </strong>
+                                <span className="text-[11px] text-emerald-700">
+                                  {log.customer_email}
+                                </span>
+                              </div>
+                            ) : (
+                              <span className="text-slate-400 font-mono">
+                                Misafir ({log.visitor_id || '-'})
+                              </span>
+                            )}
+                          </td>
+                          <td className="p-3">
+                            <span
+                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                log.action_type === 'package_view'
+                                  ? 'bg-emerald-100 text-emerald-800'
+                                  : log.action_type === 'checkout_view'
+                                  ? 'bg-amber-100 text-amber-800'
+                                  : log.action_type === 'calculator_view'
+                                  ? 'bg-sky-100 text-sky-800'
+                                  : 'bg-slate-100 text-slate-600'
+                              }`}
+                            >
+                              {log.action_type === 'package_view'
+                                ? 'Paket İnceledi'
+                                : log.action_type === 'checkout_view'
+                                ? 'Ödeme Sayfası'
+                                : log.action_type === 'calculator_view'
+                                ? 'Kalori Hesapladı'
+                                : 'Sayfa Görüntüleme'}
+                            </span>
+                          </td>
+                          <td className="p-3 font-semibold text-slate-800">
+                            <span className="block">{log.path}</span>
+                            <span className="text-[11px] text-slate-400">{log.page_title}</span>
+                          </td>
+                        </tr>
+                      ))}
+                    {activityLogs.length === 0 && (
+                      <tr>
+                        <td colSpan={4} className="p-8 text-center text-slate-400">
+                          Henüz kayıtlı aktivite logu bulunmuyor.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* 8. İL, İLÇE VE MAHALLE LOJİSTİK YÖNETİMİ */}
           {activeSection === 'locations' && (
             <div className="space-y-6">
               <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-4">
@@ -1496,7 +1688,7 @@ export default function AdminDashboardPage() {
             </div>
           )}
 
-          {/* 8. KURUMSAL SAYFALAR YÖNETİCİSİ */}
+          {/* 9. KURUMSAL SAYFALAR YÖNETİCİSİ */}
           {activeSection === 'corporate' && (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
               <div className="lg:col-span-6 bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-4 h-fit">
@@ -1754,7 +1946,7 @@ export default function AdminDashboardPage() {
             </div>
           )}
 
-          {/* 9. SIKÇA SORULAN SORULAR (SSS) YÖNETİCİSİ */}
+          {/* 10. SIKÇA SORULAN SORULAR (SSS) YÖNETİCİSİ */}
           {activeSection === 'faqs' && (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
               <div className="lg:col-span-5 bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-4 h-fit">
@@ -1925,7 +2117,7 @@ export default function AdminDashboardPage() {
             </div>
           )}
 
-          {/* 10. MENÜ YÖNETİCİSİ */}
+          {/* 11. MENÜ YÖNETİCİSİ */}
           {activeSection === 'menus' && (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
               <div className="lg:col-span-5 bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-4 h-fit">
@@ -1987,7 +2179,7 @@ export default function AdminDashboardPage() {
                     <input
                       type="text"
                       required
-                      placeholder="Örn: Kurumsal veya Fiyatlarımız"
+                      placeholder="Örn: Kalori Hesaplama veya Fiyatlarımız"
                       value={menuForm.title}
                       onChange={(e) => setMenuForm({ ...menuForm, title: e.target.value })}
                       className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm"
@@ -2001,7 +2193,7 @@ export default function AdminDashboardPage() {
                     <input
                       type="text"
                       required
-                      placeholder="Örn: /kurumsal/hakkimizda"
+                      placeholder="Örn: /kalori-hesaplama veya /kurumsal/hakkimizda"
                       value={menuForm.url}
                       onChange={(e) => setMenuForm({ ...menuForm, url: e.target.value })}
                       className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm"
@@ -2141,7 +2333,7 @@ export default function AdminDashboardPage() {
             </div>
           )}
 
-          {/* 11. TATİL & KOTA KAPATMA */}
+          {/* 12. TATİL & KOTA KAPATMA */}
           {activeSection === 'calendar' && (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
               <div className="lg:col-span-5 bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-4">
@@ -2234,7 +2426,7 @@ export default function AdminDashboardPage() {
             </div>
           )}
 
-          {/* 12. YETKİLİ KULLANICILAR YÖNETİMİ */}
+          {/* 13. YETKİLİ KULLANICILAR YÖNETİMİ */}
           {activeSection === 'admins' && (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
               <div className="lg:col-span-5 bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-4 h-fit">
@@ -2349,7 +2541,7 @@ export default function AdminDashboardPage() {
             </div>
           )}
 
-          {/* 13. GENEL AYARLAR, WHATSAPP, SOSYAL MEDYA VE GOOGLE YORUMLARI */}
+          {/* 14. GENEL AYARLAR, WHATSAPP, SOSYAL MEDYA VE GOOGLE YORUMLARI */}
           {activeSection === 'settings' && (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
               <form
@@ -3405,6 +3597,155 @@ export default function AdminDashboardPage() {
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* MODAL 4: MÜŞTERİ DETAY, SİPARİŞ GEÇMİŞİ VE GEZİNME LOGLARI */}
+      {selectedCustomer && (
+        <div className="fixed inset-0 bg-slate-950/70 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-3xl w-full p-6 sm:p-8 max-h-[90vh] overflow-y-auto shadow-2xl space-y-6">
+            <div className="flex items-start justify-between border-b border-slate-200 pb-4">
+              <div>
+                <span className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full">
+                  Müşteri Kartı (CRM)
+                </span>
+                <h3 className="text-xl font-black text-slate-900 mt-1.5">{selectedCustomer.name}</h3>
+                <p className="text-xs text-slate-500">
+                  {selectedCustomer.phone} • {selectedCustomer.email || 'E-posta yok'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedCustomer(null)}
+                className="p-2 rounded-full hover:bg-slate-100 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Özet Bilgiler */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+              <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
+                <span className="text-slate-400 font-bold block">Toplam Harcama</span>
+                <strong className="text-lg font-black text-emerald-700">
+                  {formatTRY(selectedCustomer.totalSpent)}
+                </strong>
+                <span className="block text-slate-500">{selectedCustomer.orderCount} Sipariş</span>
+              </div>
+              <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
+                <span className="text-slate-400 font-bold block">Boy / Kilo</span>
+                <strong className="text-base font-extrabold text-slate-900">
+                  {selectedCustomer.height || '-'} cm / {selectedCustomer.weight || '-'} kg
+                </strong>
+                <span className="block text-red-600 mt-0.5">
+                  Not: {selectedCustomer.notes || 'Yok'}
+                </span>
+              </div>
+              <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
+                <span className="text-slate-400 font-bold block">Teslimat Adresi</span>
+                <strong className="text-slate-900 block">
+                  {selectedCustomer.district} / {selectedCustomer.neighborhood}
+                </strong>
+                <span className="text-slate-500 line-clamp-2">{selectedCustomer.address}</span>
+              </div>
+            </div>
+
+            {/* Müşterinin Tüm Siparişleri */}
+            <div className="space-y-2.5">
+              <h4 className="font-extrabold text-slate-900 text-sm">Sipariş Geçmişi</h4>
+              <div className="divide-y divide-slate-100 border border-slate-200 rounded-2xl overflow-hidden text-xs">
+                {orders
+                  .filter(
+                    (o) =>
+                      (selectedCustomer.phone &&
+                        selectedCustomer.phone !== '-' &&
+                        o.customer_phone === selectedCustomer.phone) ||
+                      (selectedCustomer.email &&
+                        o.customer_email?.toLowerCase() === selectedCustomer.email.toLowerCase())
+                  )
+                  .map((o) => (
+                    <div
+                      key={o.id}
+                      className="p-3.5 flex flex-wrap items-center justify-between gap-2 bg-white"
+                    >
+                      <div>
+                        <strong className="text-slate-900">
+                          {o.order_number} — {o.package_title} ({o.duration_days} Gün)
+                        </strong>
+                        <span className="block text-slate-500">
+                          Başlangıç: {o.start_date} • Bitiş: {o.estimated_end_date} • Durum:{' '}
+                          {o.status}
+                        </span>
+                      </div>
+                      <strong className="text-emerald-700 font-extrabold">
+                        {formatTRY(o.grand_total)}
+                      </strong>
+                    </div>
+                  ))}
+                {orders.filter(
+                  (o) =>
+                    (selectedCustomer.phone &&
+                      selectedCustomer.phone !== '-' &&
+                      o.customer_phone === selectedCustomer.phone) ||
+                    (selectedCustomer.email &&
+                      o.customer_email?.toLowerCase() === selectedCustomer.email.toLowerCase())
+                ).length === 0 && (
+                  <p className="p-4 text-slate-400 text-center">
+                    Bu üyenin henüz tamamlanmış siparişi bulunmuyor.
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Müşterinin Site Gezinme / Aktivite Logları */}
+            <div className="space-y-2.5">
+              <div className="flex items-center justify-between">
+                <h4 className="font-extrabold text-slate-900 text-sm">
+                  Son İncelediği Sayfalar &amp; Aktivite Geçmişi
+                </h4>
+                {selectedCustomer.email && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLogFilter(selectedCustomer.email)
+                      setSelectedCustomer(null)
+                      setActiveSection('logs')
+                    }}
+                    className="text-xs font-bold text-emerald-700 hover:underline cursor-pointer"
+                  >
+                    Tüm Loglarda Filtrele &rarr;
+                  </button>
+                )}
+              </div>
+
+              <div className="border border-slate-200 rounded-2xl divide-y divide-slate-100 max-h-56 overflow-y-auto text-xs">
+                {activityLogs
+                  .filter(
+                    (l) =>
+                      selectedCustomer.email &&
+                      l.customer_email?.toLowerCase() === selectedCustomer.email.toLowerCase()
+                  )
+                  .slice(0, 20)
+                  .map((log) => (
+                    <div key={log.id} className="p-3 flex items-center justify-between gap-2">
+                      <span className="font-semibold text-slate-800">{log.path}</span>
+                      <span className="text-[11px] text-slate-400 font-mono">
+                        {new Date(log.created_at).toLocaleString('tr-TR')}
+                      </span>
+                    </div>
+                  ))}
+                {(!selectedCustomer.email ||
+                  activityLogs.filter(
+                    (l) =>
+                      l.customer_email?.toLowerCase() === selectedCustomer.email.toLowerCase()
+                  ).length === 0) && (
+                  <p className="p-4 text-slate-400 text-center">
+                    Bu müşteri için henüz kayıtlı gezinme logu bulunmuyor.
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>

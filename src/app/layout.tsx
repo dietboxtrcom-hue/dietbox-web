@@ -3,6 +3,7 @@ import type { Metadata } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import './globals.css'
 import CookieConsent from '@/components/CookieConsent'
+import ActivityTracker from '@/components/ActivityTracker'
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -36,6 +37,7 @@ export default function RootLayout({
     >
       <body suppressHydrationWarning className="min-h-full flex flex-col bg-slate-50 text-slate-900">
         <CookieConsent/>
+        <ActivityTracker/>
         {children}
       </body>
     </html>
