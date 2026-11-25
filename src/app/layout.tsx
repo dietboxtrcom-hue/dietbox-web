@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 })
 
 // Next.js 16.4+ canlı Supabase sorgularında Blocking Route uyarısını kapatır
-export const instant = false
+export const dynamic = 'force-dynamic'
 
 export const metadata: Metadata = {
   title: 'DietBox | Diyetisyen Kontrolünde Günlük Taze Diyet Yemek Paketleri',
