@@ -130,9 +130,9 @@ export default function SiteFooter({ generalSettings }: { generalSettings?: any 
 
       {/* 3. KOYU ZÜMRÜT KURUMSAL FOOTER */}
       <footer className="bg-[#0d1f18] text-slate-300 pt-16 pb-10 px-4 border-t border-white/10">
-        <div className="max-w-7xl mx-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-10 pb-12 border-b border-white/10">
-          {/* Sütun 1: Logo & Kurumsal */}
-          <div className="space-y-4">
+        <div className="max-w-7xl mx-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-8 pb-12 border-b border-white/10">
+          {/* Sütun 1: Logo & Firma Bilgileri */}
+          <div className="lg:col-span-3 space-y-4">
             <div className="bg-white inline-block p-3 rounded-2xl shadow-md">
               <img
                 src="/images/logo/diet-box-logo.png"
@@ -149,40 +149,137 @@ export default function SiteFooter({ generalSettings }: { generalSettings?: any 
                 <MapPin className="w-4 h-4 text-[#eab130] shrink-0 mt-0.5" />
                 <span>
                   {generalSettings?.address ||
-                    'Aydınevler Mah. Kırçiçeği Cad. No:28/A Maltepe / İstanbul'}
+                    'Aydınevler Mah. Kırçiçeği Cd. 34854 Maltepe / İstanbul'}
                 </span>
               </p>
               <p className="flex items-center gap-2">
                 <Phone className="w-4 h-4 text-[#51a885] shrink-0" />
-                <span className="font-bold text-white">{phoneRaw}</span>
+                <a href={`tel:${phoneDial}`} className="font-bold text-white hover:text-[#eab130]">
+                  {phoneRaw}
+                </a>
               </p>
             </div>
           </div>
 
-          {/* Sütun 2: Paket Kategori */}
-          <div className="space-y-4">
+          {/* Sütun 2: Kurumsal */}
+          <div className="lg:col-span-2 space-y-4">
             <h4 className="text-white font-black text-sm uppercase tracking-wider border-l-4 border-[#eab130] pl-3">
-              PAKET KATEGORİ
+              KURUMSAL
             </h4>
             <ul className="space-y-2.5 text-xs divide-y divide-white/10">
               <li className="pt-2.5 first:pt-0">
-                <Link href="/paketler" className="hover:text-[#eab130] flex items-center gap-1.5 transition">
-                  <ChevronRight className="w-3.5 h-3.5 text-[#51a885]" /> Diyet Paketleri
+                <Link href="/kurumsal/hakkimizda" className="hover:text-[#eab130] flex items-center gap-1.5 transition">
+                  <ChevronRight className="w-3.5 h-3.5 text-[#51a885]" /> Hakkımızda
                 </Link>
               </li>
               <li className="pt-2.5">
-                <Link href="/paketler" className="hover:text-[#eab130] flex items-center gap-1.5 transition">
-                  <ChevronRight className="w-3.5 h-3.5 text-[#51a885]" /> Detoks Paketleri
+                <Link href="/kurumsal/misyon-vizyon" className="hover:text-[#eab130] flex items-center gap-1.5 transition">
+                  <ChevronRight className="w-3.5 h-3.5 text-[#51a885]" /> Misyon & Vizyon
                 </Link>
               </li>
               <li className="pt-2.5">
-                <Link href="/paketler" className="hover:text-[#eab130] flex items-center gap-1.5 transition">
-                  <ChevronRight className="w-3.5 h-3.5 text-[#51a885]" /> Sporcu Paketleri
+                <Link href="/kurumsal/teslimat-bilgisi" className="hover:text-[#eab130] flex items-center gap-1.5 transition">
+                  <ChevronRight className="w-3.5 h-3.5 text-[#51a885]" /> Teslimat Bilgisi
                 </Link>
               </li>
               <li className="pt-2.5">
-                <Link href="/paketler" className="hover:text-[#eab130] flex items-center gap-1.5 transition">
-                  <ChevronRight className="w-3.5 h-3.5 text-[#51a885]" /> Ofis Paketleri
+                <Link href="/sikca-sorulan-sorular" className="hover:text-[#eab130] flex items-center gap-1.5 transition">
+                  <ChevronRight className="w-3.5 h-3.5 text-[#51a885]" /> Sıkça Sorulan Sorular
+                </Link>
+              </li>
+              <li className="pt-2.5">
+                <Link href="/iletisim" className="hover:text-[#eab130] flex items-center gap-1.5 transition">
+                  <ChevronRight className="w-3.5 h-3.5 text-[#51a885]" /> İletişim
+                </Link>
+              </li>
+            </ul>
+          </div>
+
+          {/* Sütun 3: Yasal & Sözleşmeler */}
+          <div className="lg:col-span-3 space-y-4">
+            <h4 className="text-white font-black text-sm uppercase tracking-wider border-l-4 border-[#51a885] pl-3">
+              YASAL & SÖZLEŞMELER
+            </h4>
+            <ul className="space-y-2.5 text-xs divide-y divide-white/10">
+              <li className="pt-2.5 first:pt-0">
+                <Link
+                  href="/kurumsal/mesafeli-satis-sozlesmesi"
+                  className="hover:text-[#eab130] flex items-center gap-1.5 transition"
+                >
+                  <ChevronRight className="w-3.5 h-3.5 text-[#51a885]" /> Mesafeli Satış Sözleşmesi
+                </Link>
+              </li>
+              <li className="pt-2.5">
+                <Link
+                  href="/kurumsal/kvkk"
+                  className="hover:text-[#eab130] flex items-center gap-1.5 transition"
+                >
+                  <ChevronRight className="w-3.5 h-3.5 text-[#51a885]" /> KVKK Aydınlatma Metni
+                </Link>
+              </li>
+              <li className="pt-2.5">
+                <Link
+                  href="/kurumsal/cerez-politikasi"
+                  className="hover:text-[#eab130] flex items-center gap-1.5 transition"
+                >
+                  <ChevronRight className="w-3.5 h-3.5 text-[#51a885]" /> Çerez (Cookie) Politikası
+                </Link>
+              </li>
+              <li className="pt-2.5">
+                <Link
+                  href="/kurumsal/iptal-ve-iade-kosullari"
+                  className="hover:text-[#eab130] flex items-center gap-1.5 transition"
+                >
+                  <ChevronRight className="w-3.5 h-3.5 text-[#51a885]" /> İptal, İade & Gün Dondurma
+                </Link>
+              </li>
+              <li className="pt-2.5">
+                <Link
+                  href="/hesabim"
+                  className="hover:text-[#eab130] flex items-center gap-1.5 transition"
+                >
+                  <ChevronRight className="w-3.5 h-3.5 text-[#51a885]" /> Paket Takibi & Hesabım
+                </Link>
+              </li>
+            </ul>
+          </div>
+
+          {/* Sütun 4: Popüler Paketler */}
+          <div className="lg:col-span-2 space-y-4">
+            <h4 className="text-white font-black text-sm uppercase tracking-wider border-l-4 border-[#eab130] pl-3">
+              PAKETLERİMİZ
+            </h4>
+            <ul className="space-y-2.5 text-xs divide-y divide-white/10">
+              <li className="pt-2.5 first:pt-0">
+                <Link
+                  href="/paketler/zayiflama-ve-dengeli-beslenme-paketi"
+                  className="hover:text-[#eab130] flex items-center gap-1.5 transition"
+                >
+                  <ChevronRight className="w-3.5 h-3.5 text-[#51a885]" /> Zayıflama & Dengeli
+                </Link>
+              </li>
+              <li className="pt-2.5">
+                <Link
+                  href="/paketler/intermittent-fasting-aralikli-oruc"
+                  className="hover:text-[#eab130] flex items-center gap-1.5 transition"
+                >
+                  <ChevronRight className="w-3.5 h-3.5 text-[#51a885]" /> Intermittent Fasting
+                </Link>
+              </li>
+              <li className="pt-2.5">
+                <Link
+                  href="/paketler/21-gunluk-diyet-detoks-paketi"
+                  className="hover:text-[#eab130] flex items-center gap-1.5 transition"
+                >
+                  <ChevronRight className="w-3.5 h-3.5 text-[#51a885]" /> 21 Günlük Detoks
+                </Link>
+              </li>
+              <li className="pt-2.5">
+                <Link
+                  href="/paketler/sporcu-beslenme-paketi"
+                  className="hover:text-[#eab130] flex items-center gap-1.5 transition"
+                >
+                  <ChevronRight className="w-3.5 h-3.5 text-[#51a885]" /> Sporcu Beslenme
                 </Link>
               </li>
               <li className="pt-2.5">
@@ -196,64 +293,15 @@ export default function SiteFooter({ generalSettings }: { generalSettings?: any 
             </ul>
           </div>
 
-          {/* Sütun 3: Popüler Paketler */}
-          <div className="space-y-4">
-            <h4 className="text-white font-black text-sm uppercase tracking-wider border-l-4 border-[#51a885] pl-3">
-              POPÜLER PAKETLER
-            </h4>
-            <ul className="space-y-2.5 text-xs divide-y divide-white/10">
-              <li className="pt-2.5 first:pt-0">
-                <Link
-                  href="/paketler/zayiflama-ve-dengeli-beslenme-paketi"
-                  className="hover:text-[#eab130] flex items-center gap-1.5 transition"
-                >
-                  <ChevronRight className="w-3.5 h-3.5 text-[#51a885]" /> Zayıflama ve Dengeli Beslenme
-                </Link>
-              </li>
-              <li className="pt-2.5">
-                <Link
-                  href="/paketler/intermittent-fasting-aralikli-oruc"
-                  className="hover:text-[#eab130] flex items-center gap-1.5 transition"
-                >
-                  <ChevronRight className="w-3.5 h-3.5 text-[#51a885]" /> Intermittent Fasting (16/8)
-                </Link>
-              </li>
-              <li className="pt-2.5">
-                <Link
-                  href="/paketler/21-gunluk-diyet-detoks-paketi"
-                  className="hover:text-[#eab130] flex items-center gap-1.5 transition"
-                >
-                  <ChevronRight className="w-3.5 h-3.5 text-[#51a885]" /> 21 Günlük Diyet & Detoks
-                </Link>
-              </li>
-              <li className="pt-2.5">
-                <Link
-                  href="/paketler/ketojenik-diyet-paketi"
-                  className="hover:text-[#eab130] flex items-center gap-1.5 transition"
-                >
-                  <ChevronRight className="w-3.5 h-3.5 text-[#51a885]" /> Ketojenik Diyet Paketi
-                </Link>
-              </li>
-              <li className="pt-2.5">
-                <Link
-                  href="/paketler/sporcu-beslenme-paketi"
-                  className="hover:text-[#eab130] flex items-center gap-1.5 transition"
-                >
-                  <ChevronRight className="w-3.5 h-3.5 text-[#51a885]" /> Sporcu Beslenme Paketi
-                </Link>
-              </li>
-            </ul>
-          </div>
-
-          {/* Sütun 4: Sosyal Medya & Güvenli Ödeme */}
-          <div className="space-y-5">
+          {/* Sütun 5: Sosyal Medya & Güvenli Ödeme */}
+          <div className="lg:col-span-2 space-y-5">
             <div>
               <h4 className="text-white font-black text-sm uppercase tracking-wider mb-3">
                 SOSYAL MEDYA
               </h4>
               <div className="flex items-center gap-3">
                 <a
-                  href={generalSettings?.facebook_url || 'https://facebook.com'}
+                  href={generalSettings?.facebook_url || 'https://www.facebook.com/dietboxtr/'}
                   target="_blank"
                   rel="noreferrer"
                   className="w-10 h-10 rounded-xl bg-white/10 hover:bg-[#51a885] text-white flex items-center justify-center font-black transition"
@@ -261,7 +309,7 @@ export default function SiteFooter({ generalSettings }: { generalSettings?: any 
                   f
                 </a>
                 <a
-                  href={generalSettings?.instagram_url || 'https://instagram.com'}
+                  href={generalSettings?.instagram_url || 'https://www.instagram.com/dietboxtr/'}
                   target="_blank"
                   rel="noreferrer"
                   className="w-10 h-10 rounded-xl bg-white/10 hover:bg-[#eab130] hover:text-slate-950 text-white flex items-center justify-center font-black transition"
@@ -288,13 +336,16 @@ export default function SiteFooter({ generalSettings }: { generalSettings?: any 
               </div>
               <div className="inline-flex items-center gap-1.5 text-xs text-[#51a885] font-bold pt-1">
                 <ShieldCheck className="w-4 h-4 text-[#eab130]" />
-                secure 256Bit SSL & 3D Secure
+                256Bit SSL & 3D Secure
               </div>
             </div>
           </div>
         </div>
 
         <div className="max-w-7xl mx-auto pt-6 text-center space-y-1.5 text-xs text-slate-400">
+          <p className="text-slate-300 font-semibold">
+            Mesa Tüketim Maddeleri Gıda İnşaat Enerji San. ve Ticaret Ltd. Şti.
+          </p>
           <p>{generalSettings?.footer_copyright || 'Diet Box. © 2026. Her Hakkı Saklıdır.'}</p>
           <p>
             Web Tasarım{' '}
