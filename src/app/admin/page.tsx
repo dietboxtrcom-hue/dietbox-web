@@ -7,6 +7,7 @@ import * as XLSX from 'xlsx'
 import { format, differenceInCalendarDays, parseISO } from 'date-fns'
 import { createClient } from '@/lib/supabase/client'
 import { formatTRY } from '@/lib/pricing-engine'
+import RichTextEditor from '@/components/RichTextEditor'
 import {
   LayoutDashboard,
   Truck,
@@ -1607,18 +1608,14 @@ export default function AdminDashboardPage() {
                   </div>
 
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">
-                      Sayfa İçeriği (Paragraflar arasında boş satır bırakabilirsiniz)
-                    </label>
-                    <textarea
-                      rows={10}
-                      required
-                      value={corpForm.content}
-                      onChange={(e) => setCorpForm({ ...corpForm, content: e.target.value })}
-                      placeholder="Sayfa metnini buraya yazın..."
-                      className="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs leading-relaxed"
-                    />
-                  </div>
+  <label className="block text-xs font-bold text-slate-700 mb-1">
+    Sayfa İçeriği (Zengin Metin Editörü)
+  </label>
+  <RichTextEditor
+    value={corpForm.content}
+    onChange={(html) => setCorpForm({ ...corpForm, content: html })}
+  />
+</div>
 
                   <label className="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer">
                     <input

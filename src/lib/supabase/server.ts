@@ -37,7 +37,7 @@ export function createAdminClient() {
 
   const activeKey =
     serviceKey &&
-    serviceKey.startsWith('ey') &&
+    (serviceKey.startsWith('ey') || serviceKey.startsWith('sb_secret_')) &&
     !serviceKey.includes('buraya_')
       ? serviceKey
       : anonKey
