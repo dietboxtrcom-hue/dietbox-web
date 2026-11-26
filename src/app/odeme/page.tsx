@@ -17,9 +17,9 @@ import {
   ShieldCheck,
   ArrowLeft,
   Truck,
-  Sparkles,
   UserCheck,
 } from 'lucide-react'
+import PineappleIcon from '@/components/PineappleIcon'
 
 export default function CheckoutPage() {
   const [draft, setDraft] = useState<any>(null)
@@ -379,7 +379,7 @@ export default function CheckoutPage() {
               {deliveryPreview && (
                 <div className="bg-emerald-50/80 border border-emerald-200 rounded-xl p-4 flex flex-wrap items-center justify-between gap-3 text-xs text-emerald-950">
                   <div className="flex items-center gap-2">
-                    <Sparkles className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <PineappleIcon className="w-4 h-4" />
                     <span>
                       <strong>{draft.durationDays} Günlük</strong> paketiniz{' '}
                       <strong>{startDate}</strong> tarihinde başlayıp{' '}

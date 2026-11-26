@@ -11,10 +11,10 @@ import {
   CalendarCheck,
   Truck,
   ShieldCheck,
-  Sparkles,
   CheckCircle2,
   ArrowRight,
 } from 'lucide-react'
+import PineappleIcon from '@/components/PineappleIcon'
 
 export const dynamic = 'force-dynamic'
 
@@ -93,7 +93,7 @@ export default async function HomePage() {
         <section className="my-14 bg-gradient-to-br from-[#0d1f18] via-[#132c22] to-[#0d1f18] text-white rounded-[2.25rem] p-8 sm:p-12 shadow-2xl relative overflow-hidden">
           <div className="max-w-2xl space-y-2 mb-10">
             <span className="inline-flex items-center gap-1.5 text-xs font-extrabold uppercase tracking-widest text-[#eab130]">
-              <Sparkles className="w-4 h-4" />
+              <PineappleIcon className="w-4 h-4" />
               Zahmetsiz Sağlıklı Yaşam
             </span>
             <h2 className="text-2xl sm:text-4xl font-black">

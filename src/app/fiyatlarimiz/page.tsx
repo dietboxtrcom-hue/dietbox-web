@@ -4,7 +4,8 @@ import { createClient } from '@/lib/supabase/server'
 import SiteHeader from '@/components/SiteHeader'
 import SiteFooter from '@/components/SiteFooter'
 import { formatTRY } from '@/lib/pricing-engine'
-import { ArrowRight, CheckCircle2, Sparkles } from 'lucide-react'
+import { ArrowRight, CheckCircle2 } from 'lucide-react'
+import PineappleIcon from '@/components/PineappleIcon'
 
 export const dynamic = 'force-dynamic'
 
@@ -27,7 +28,7 @@ export default async function PricingTablePage() {
       <main className="max-w-6xl w-full mx-auto px-4 sm:px-6 py-10 space-y-8">
         <div className="bg-gradient-to-r from-emerald-950 to-slate-900 text-white rounded-3xl p-8 sm:p-10 space-y-3 shadow-lg">
           <span className="inline-flex items-center gap-1.5 text-xs font-bold bg-emerald-500/20 text-emerald-300 px-3 py-1 rounded-full">
-            <Sparkles className="w-3.5 h-3.5" />
+            <PineappleIcon className="w-3.5 h-3.5" />
             Şeffaf & Kademeli Fiyat Tablosu
           </span>
           <h1 className="text-2xl sm:text-4xl font-black">

@@ -5,7 +5,8 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { DietPackage } from '@/types/database'
 import { formatTRY } from '@/lib/pricing-engine'
-import { Calculator, ArrowRight, Sparkles, CheckCircle2 } from 'lucide-react'
+import { Calculator, ArrowRight, CheckCircle2 } from 'lucide-react'
+import PineappleIcon from '@/components/PineappleIcon'
 
 interface Props {
   packages: DietPackage[]
@@ -89,7 +90,7 @@ export default function CalorieWizard({ packages }: Props) {
       <div className="max-w-5xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
         <div className="lg:col-span-7 space-y-6">
           <div className="inline-flex items-center gap-2 bg-emerald-800/60 border border-emerald-600/40 px-4 py-1.5 rounded-full text-emerald-200 text-sm font-medium">
-            <Sparkles className="w-4 h-4 text-emerald-400" />
+            <PineappleIcon className="w-4 h-4" />
             Akıllı Paket Öneri Sihirbazı
           </div>
           <h2 className="text-3xl md:text-4xl font-bold tracking-tight">

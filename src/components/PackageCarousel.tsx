@@ -11,8 +11,8 @@ import {
   ArrowRight,
   LayoutGrid,
   Utensils,
-  Sparkles,
-} from 'lucide-react'
+  } from 'lucide-react'
+import PineappleIcon from '@/components/PineappleIcon'
 
 interface Props {
   packages: any[]
@@ -61,7 +61,7 @@ export default function PackageCarousel({ packages }: Props) {
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div className="space-y-2">
           <div className="inline-flex items-center gap-2 text-xs font-extrabold uppercase tracking-widest text-[#51a885] bg-[#51a885]/10 px-3.5 py-1.5 rounded-full">
-            <Sparkles className="w-3.5 h-3.5 text-[#eab130]" />
+            <PineappleIcon className="w-3.5 h-3.5" />
             Kişiye Özel Beslenme Programları
           </div>
           <h2 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight">
