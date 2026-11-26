@@ -174,12 +174,14 @@ export default function CheckoutPage() {
 
     setSubmitting(true)
     try {
+      const fullName = `${firstName} ${lastName}`.trim()
+
       const res = await fetch('/api/orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           userId: loggedUserId,
-          customerName: `${firstName} ${lastName}`.trim(),
+          customerName: fullName,
           customerPhone: phone,
           customerEmail: email,
           cityName: draft.cityName,
@@ -211,6 +213,69 @@ export default function CheckoutPage() {
         alert(data.error || 'Sipariş oluşturulurken bir hata oluştu.')
         setSubmitting(false)
         return
+      }
+
+      // Oturumu açık üyenin profilindeki mahalle/adres ve başlangıç kilosunu otomatik eşitle
+      if (loggedUserId) {
+        try {
+          const supabase = createClient()
+          let matchedDistrictId: number | null = draft.districtId ? Number(draft.districtId) : null
+          let matchedCityId: number | null = draft.cityId ? Number(draft.cityId) : null
+
+          if (draft.neighborhoodId && !matchedDistrictId) {
+            const { data: nRow } = await supabase
+              .from('neighborhoods')
+              .select('district_id')
+              .eq('id', draft.neighborhoodId)
+              .single()
+            if (nRow?.district_id) matchedDistrictId = nRow.district_id
+          }
+
+          await supabase.from('profiles').upsert(
+            {
+              id: loggedUserId,
+              full_name: fullName,
+              email,
+              phone,
+              city: draft.cityName || 'İstanbul',
+              city_id: matchedCityId || 1,
+              district: draft.districtName || '',
+              district_id: matchedDistrictId,
+              neighborhood: draft.neighborhoodName || '',
+              neighborhood_id: draft.neighborhoodId ? Number(draft.neighborhoodId) : null,
+              full_address: fullAddress,
+              height_cm: heightCm ? Number(heightCm) : null,
+              weight_kg: weightKg ? Number(weightKg) : null,
+              allergies: orderNote || null,
+              invoice_type: invoiceType,
+              tc_no: invoiceType === 'individual' ? tcNo : null,
+              company_name: invoiceType === 'corporate' ? companyName : null,
+              tax_office: invoiceType === 'corporate' ? taxOffice : null,
+              tax_no: invoiceType === 'corporate' ? taxNo : null,
+            },
+            { onConflict: 'id' }
+          )
+
+          // İlk siparişte girilen kiloyu gelişim grafiğine başlangıç noktası olarak ekle
+          const wNum = Number(weightKg)
+          if (wNum >= 30 && wNum <= 250) {
+            const { count } = await supabase
+              .from('weight_logs')
+              .select('id', { count: 'exact', head: true })
+              .eq('user_id', loggedUserId)
+
+            if (!count || count === 0) {
+              await supabase.from('weight_logs').insert({
+                user_id: loggedUserId,
+                weight_kg: wNum,
+                measured_at: new Date().toISOString().slice(0, 10),
+                note: `İlk paket başlangıç kilosu (${draft.packageTitle})`,
+              })
+            }
+          }
+        } catch {
+          // Profil senkronizasyonu sipariş onayını engellemesin
+        }
       }
 
       sessionStorage.removeItem('dietbox_checkout_draft')
@@ -264,7 +329,7 @@ export default function CheckoutPage() {
               href="/hesabim"
               className="flex-1 bg-[#0d1f18] hover:bg-slate-800 text-white font-semibold py-3 px-4 rounded-xl text-sm transition"
             >
-              Siparişimi Hesabımda Gör
+              Siparişimi &amp; Gelişimimi Gör
             </Link>
             <Link
               href="/"
@@ -493,6 +558,7 @@ export default function CheckoutPage() {
                   </label>
                   <input
                     type="number"
+                    step="0.1"
                     required
                     value={weightKg}
                     onChange={(e) => setWeightKg(e.target.value)}

@@ -3,6 +3,7 @@
 
 import { useState, useMemo, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
 import {
   DietPackage,
   PackageDuration,
@@ -23,6 +24,7 @@ import {
   Utensils,
   Clock,
   Flame,
+  UserCheck,
 } from 'lucide-react'
 
 interface Props {
@@ -46,6 +48,7 @@ export default function PackageConfigurator({
   const searchParams = useSearchParams()
 
   const [menuOpen, setMenuOpen] = useState<boolean>(false)
+  const [profileRegionApplied, setProfileRegionApplied] = useState<boolean>(false)
 
   // Paketin kendi özel periyotlarını (custom_duration_prices) baz al
   const effectiveTiers = useMemo(() => {
@@ -70,7 +73,7 @@ export default function PackageConfigurator({
     }))
   }, [pkg, durations])
 
-  // Seçili periyot satırı indeksi (Ofis paketi gibi çoklu varyasyonları ve 21 günlük tekil paketleri destekler)
+  // Seçili periyot satırı indeksi
   const [selectedTierIdx, setSelectedTierIdx] = useState<number>(0)
 
   useEffect(() => {
@@ -120,8 +123,86 @@ export default function PackageConfigurator({
     activeNeighborhoods[0]?.id || 0
   )
 
+  // Oturum açmış üyenin profilindeki İl / Yaka / İlçe / Mahalle bilgisini otomatik seç
   useEffect(() => {
-    if (activeNeighborhoods.length > 0 && !activeNeighborhoods.some((n) => n.id === selectedNeighborhoodId)) {
+    let cancelled = false
+
+    const applyProfileRegion = async () => {
+      try {
+        const supabase = createClient()
+        const {
+          data: { user },
+        } = await supabase.auth.getUser()
+
+        if (!user || cancelled) return
+
+        const { data: prof } = await supabase
+          .from('profiles')
+          .select('city_id, city, district_id, district, neighborhood_id, neighborhood')
+          .eq('id', user.id)
+          .single()
+
+        if (!prof || cancelled) return
+
+        const matchedDistrict =
+          districts.find((d) => d.is_active && prof.district_id && d.id === Number(prof.district_id)) ||
+          districts.find(
+            (d) =>
+              d.is_active &&
+              prof.district &&
+              d.name.trim().toLowerCase() === String(prof.district).trim().toLowerCase()
+          )
+
+        if (!matchedDistrict) return
+
+        const matchedCity =
+          cities.find((c) => c.id === matchedDistrict.city_id) ||
+          cities.find((c) => prof.city_id && c.id === Number(prof.city_id)) ||
+          cities[0]
+
+        const distNeighborhoods = neighborhoods.filter(
+          (n) => n.district_id === matchedDistrict.id && n.is_active
+        )
+
+        const matchedNeighborhood =
+          distNeighborhoods.find(
+            (n) => prof.neighborhood_id && n.id === Number(prof.neighborhood_id)
+          ) ||
+          distNeighborhoods.find(
+            (n) =>
+              prof.neighborhood &&
+              n.name.trim().toLowerCase() === String(prof.neighborhood).trim().toLowerCase()
+          ) ||
+          distNeighborhoods[0]
+
+        if (matchedCity) setSelectedCityId(matchedCity.id)
+        if (
+          matchedDistrict.side === 'Anadolu Yakası' ||
+          matchedDistrict.side === 'Avrupa Yakası'
+        ) {
+          setSelectedSide(matchedDistrict.side)
+        }
+        setSelectedDistrictId(matchedDistrict.id)
+        if (matchedNeighborhood) {
+          setSelectedNeighborhoodId(matchedNeighborhood.id)
+        }
+        setProfileRegionApplied(true)
+      } catch {
+        // Oturum veya profil yoksa varsayılan seçimle devam et
+      }
+    }
+
+    applyProfileRegion()
+    return () => {
+      cancelled = true
+    }
+  }, [cities, districts, neighborhoods])
+
+  useEffect(() => {
+    if (
+      activeNeighborhoods.length > 0 &&
+      !activeNeighborhoods.some((n) => n.id === selectedNeighborhoodId)
+    ) {
       setSelectedNeighborhoodId(activeNeighborhoods[0].id)
     }
   }, [activeNeighborhoods, selectedNeighborhoodId])
@@ -130,6 +211,7 @@ export default function PackageConfigurator({
   const [quantity, setQuantity] = useState<number>(1)
 
   const handleCityChange = (cId: number) => {
+    setProfileRegionApplied(false)
     setSelectedCityId(cId)
     const cityObj = cities.find((c) => c.id === cId)
     const nextSide = cityObj?.name === 'İstanbul' ? 'Anadolu Yakası' : 'Merkez'
@@ -149,6 +231,7 @@ export default function PackageConfigurator({
   }
 
   const handleSideChange = (newSide: 'Anadolu Yakası' | 'Avrupa Yakası') => {
+    setProfileRegionApplied(false)
     setSelectedSide(newSide)
     const nextDistricts = districts.filter(
       (d) => d.city_id === selectedCityId && d.side === newSide && d.is_active
@@ -164,6 +247,7 @@ export default function PackageConfigurator({
   }
 
   const handleDistrictChange = (distId: number) => {
+    setProfileRegionApplied(false)
     setSelectedDistrictId(distId)
     const nextNeighs = neighborhoods.filter((n) => n.district_id === distId && n.is_active)
     setSelectedNeighborhoodId(nextNeighs[0]?.id || 0)
@@ -286,11 +370,19 @@ export default function PackageConfigurator({
 
       {/* 2. BÖLGE, İLÇE VE MAHALLE SEÇİMİ */}
       <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-5">
-        <div className="text-xs text-slate-500 border-b border-slate-100 pb-3">
-          Kategoriler:{' '}
-          <span className="font-semibold text-emerald-700">
-            {(pkg as any).category || 'Diyet Paketleri'}
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500 border-b border-slate-100 pb-3">
+          <span>
+            Kategoriler:{' '}
+            <span className="font-semibold text-emerald-700">
+              {(pkg as any).category || 'Diyet Paketleri'}
+            </span>
           </span>
+          {profileRegionApplied && (
+            <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full">
+              <UserCheck className="w-3.5 h-3.5 text-emerald-600" />
+              Profil mahalleniz otomatik seçildi
+            </span>
+          )}
         </div>
 
         {/* İl Seçimi */}
@@ -355,7 +447,10 @@ export default function PackageConfigurator({
             </label>
             <select
               value={selectedNeighborhoodId}
-              onChange={(e) => setSelectedNeighborhoodId(Number(e.target.value))}
+              onChange={(e) => {
+                setProfileRegionApplied(false)
+                setSelectedNeighborhoodId(Number(e.target.value))
+              }}
               className="w-full border border-red-400 rounded-lg px-3.5 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-emerald-600"
             >
               {activeNeighborhoods.length > 0 ? (

@@ -9,6 +9,7 @@ import { createClient } from '@/lib/supabase/client'
 import { formatTRY } from '@/lib/pricing-engine'
 import SiteHeader from '@/components/SiteHeader'
 import SiteFooter from '@/components/SiteFooter'
+import WeightProgressTracker from '@/components/WeightProgressTracker'
 import {
   User,
   MapPin,
@@ -32,6 +33,11 @@ export default function CustomerAccountPage() {
   const [authUser, setAuthUser] = useState<any>(null)
   const [activeTab, setActiveTab] = useState<'profile' | 'orders'>('profile')
 
+  // Lojistik Lokasyon Listeleri
+  const [cities, setCities] = useState<any[]>([])
+  const [districts, setDistricts] = useState<any[]>([])
+  const [neighborhoods, setNeighborhoods] = useState<any[]>([])
+
   const [profile, setProfile] = useState<any>({
     full_name: '',
     email: '',
@@ -42,11 +48,15 @@ export default function CustomerAccountPage() {
     tax_office: '',
     tax_no: '',
     city: 'İstanbul',
+    city_id: 1,
     district: '',
+    district_id: '',
     neighborhood: '',
+    neighborhood_id: '',
     full_address: '',
     height_cm: '',
     weight_kg: '',
+    target_weight_kg: '',
     age: '',
     gender: 'male',
     allergies: '',
@@ -83,14 +93,24 @@ export default function CustomerAccountPage() {
   useEffect(() => {
     const init = async () => {
       const supabase = createClient()
-      const [mRes, sRes, uRes] = await Promise.all([
+      const [mRes, sRes, uRes, cRes, dRes, nRes] = await Promise.all([
         supabase.from('navigation_menus').select('*').eq('is_active', true).order('sort_order'),
         supabase.from('system_settings').select('value').eq('key', 'general_settings').single(),
         supabase.auth.getUser(),
+        supabase.from('cities').select('*').eq('is_active', true).order('id'),
+        supabase.from('districts').select('*').eq('is_active', true).order('name'),
+        supabase.from('neighborhoods').select('*').eq('is_active', true).order('name').limit(2000),
       ])
+
+      const loadedCities = cRes.data || []
+      const loadedDistricts = dRes.data || []
+      const loadedNeighborhoods = nRes.data || []
 
       setMenus(mRes.data || [])
       if (sRes.data?.value) setSettings(sRes.data.value)
+      setCities(loadedCities)
+      setDistricts(loadedDistricts)
+      setNeighborhoods(loadedNeighborhoods)
 
       if (uRes.data?.user) {
         const u = uRes.data.user
@@ -102,6 +122,29 @@ export default function CustomerAccountPage() {
           .eq('id', u.id)
           .single()
 
+        // Metin olarak kayıtlı ilçe/mahalle varsa ID'leri otomatik eşleştir
+        const matchedCity =
+          loadedCities.find((c) => c.id === prof?.city_id) ||
+          loadedCities.find((c) => c.name?.toLowerCase() === (prof?.city || 'istanbul').toLowerCase()) ||
+          loadedCities[0]
+
+        const matchedDistrict =
+          loadedDistricts.find((d) => d.id === prof?.district_id) ||
+          loadedDistricts.find(
+            (d) =>
+              prof?.district &&
+              d.name?.toLowerCase() === String(prof.district).trim().toLowerCase()
+          )
+
+        const matchedNeighborhood =
+          loadedNeighborhoods.find((n) => n.id === prof?.neighborhood_id) ||
+          loadedNeighborhoods.find(
+            (n) =>
+              prof?.neighborhood &&
+              (!matchedDistrict || n.district_id === matchedDistrict.id) &&
+              n.name?.toLowerCase() === String(prof.neighborhood).trim().toLowerCase()
+          )
+
         const merged = {
           full_name: prof?.full_name || u.user_metadata?.full_name || u.user_metadata?.name || '',
           email: prof?.email || u.email || '',
@@ -111,19 +154,22 @@ export default function CustomerAccountPage() {
           company_name: prof?.company_name || '',
           tax_office: prof?.tax_office || '',
           tax_no: prof?.tax_no || '',
-          city: prof?.city || 'İstanbul',
-          district: prof?.district || '',
-          neighborhood: prof?.neighborhood || '',
+          city: matchedCity?.name || prof?.city || 'İstanbul',
+          city_id: matchedCity?.id || prof?.city_id || 1,
+          district: matchedDistrict?.name || prof?.district || '',
+          district_id: matchedDistrict?.id ? String(matchedDistrict.id) : '',
+          neighborhood: matchedNeighborhood?.name || prof?.neighborhood || '',
+          neighborhood_id: matchedNeighborhood?.id ? String(matchedNeighborhood.id) : '',
           full_address: prof?.full_address || '',
           height_cm: prof?.height_cm || '',
           weight_kg: prof?.weight_kg || '',
+          target_weight_kg: prof?.target_weight_kg || '',
           age: prof?.age || '',
           gender: prof?.gender || 'male',
           allergies: prof?.allergies || '',
         }
         setProfile(merged)
 
-        // Üyenin tüm siparişlerini ID + E-posta + Telefon ile otomatik çek
         fetchOrdersFromApi({
           userId: u.id,
           email: merged.email,
@@ -133,6 +179,16 @@ export default function CustomerAccountPage() {
     }
     init()
   }, [])
+
+  const availableDistricts = useMemo(() => {
+    if (!profile.city_id) return districts
+    return districts.filter((d) => Number(d.city_id) === Number(profile.city_id))
+  }, [districts, profile.city_id])
+
+  const availableNeighborhoods = useMemo(() => {
+    if (!profile.district_id) return []
+    return neighborhoods.filter((n) => Number(n.district_id) === Number(profile.district_id))
+  }, [neighborhoods, profile.district_id])
 
   // Detaylı VKİ (Vücut Kitle Endeksi), BMR, İdeal Kilo ve Günlük Kalori Hesabı
   const healthMetrics = useMemo(() => {
@@ -168,7 +224,6 @@ export default function CustomerAccountPage() {
       bmiColor = 'text-red-700 bg-red-100'
     }
 
-    // Skala yüzdesi (15 ile 38 arası)
     const barPercent = Math.min(100, Math.max(4, ((bmi - 15) / (38 - 15)) * 100))
 
     return {
@@ -202,11 +257,15 @@ export default function CustomerAccountPage() {
         tax_office: profile.tax_office,
         tax_no: profile.tax_no,
         city: profile.city,
+        city_id: profile.city_id ? Number(profile.city_id) : null,
         district: profile.district,
+        district_id: profile.district_id ? Number(profile.district_id) : null,
         neighborhood: profile.neighborhood,
+        neighborhood_id: profile.neighborhood_id ? Number(profile.neighborhood_id) : null,
         full_address: profile.full_address,
         height_cm: profile.height_cm ? Number(profile.height_cm) : null,
         weight_kg: profile.weight_kg ? Number(profile.weight_kg) : null,
+        target_weight_kg: profile.target_weight_kg ? Number(profile.target_weight_kg) : null,
         age: profile.age ? Number(profile.age) : null,
         gender: profile.gender,
         daily_calorie_target: healthMetrics?.targetCalories || null,
@@ -219,7 +278,7 @@ export default function CustomerAccountPage() {
     if (error) {
       alert(error.message)
     } else {
-      alert('Profil, fatura ve beslenme bilgileriniz kaydedildi! Ödeme ekranında otomatik doldurulacaktır.')
+      alert('Profil, mahalle, fatura ve beslenme bilgileriniz kaydedildi! Sipariş ekranında otomatik doldurulacaktır.')
       fetchOrdersFromApi({
         userId: authUser.id,
         email: profile.email,
@@ -313,9 +372,9 @@ export default function CustomerAccountPage() {
         ) : (
           <div className="bg-white rounded-3xl p-8 border border-slate-200 flex flex-wrap items-center justify-between gap-6">
             <div className="space-y-1">
-              <h1 className="text-2xl font-black text-slate-900">Hesabım & Sipariş Takibi</h1>
+              <h1 className="text-2xl font-black text-slate-900">Hesabım &amp; Sipariş Takibi</h1>
               <p className="text-xs sm:text-sm text-slate-500">
-                Üye girişi yaparak adres, fatura, VKİ / kalori bilgilerinizi kaydedebilir ve siparişlerinizi takip edebilirsiniz.
+                Üye girişi yaparak adres, fatura, kilo gelişim grafiği ve siparişlerinizi takip edebilirsiniz.
               </p>
             </div>
             <Link
@@ -329,7 +388,7 @@ export default function CustomerAccountPage() {
 
         {/* Sekmeler */}
         {authUser && (
-          <div className="flex gap-2 bg-white p-1.5 rounded-2xl border border-slate-200 w-fit">
+          <div className="flex flex-wrap gap-2 bg-white p-1.5 rounded-2xl border border-slate-200 w-fit">
             <button
               onClick={() => setActiveTab('profile')}
               className={`px-5 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer transition ${
@@ -339,7 +398,7 @@ export default function CustomerAccountPage() {
               }`}
             >
               <User className="w-4 h-4" />
-              Profil, Fatura & VKİ Bilgilerim
+              Profil, Gelişim Grafiği &amp; VKİ
             </button>
             <button
               onClick={() => setActiveTab('orders')}
@@ -350,294 +409,367 @@ export default function CustomerAccountPage() {
               }`}
             >
               <Package className="w-4 h-4" />
-              Siparişlerim & Gün Dondurma ({orders.length})
+              Siparişlerim &amp; Gün Dondurma ({orders.length})
             </button>
           </div>
         )}
 
-        {/* SEKME 1: PROFİL, FATURA VE VKİ/KALORİ */}
+        {/* SEKME 1: PROFİL, FATURA, VKİ VE KİLO GELİŞİM GRAFİĞİ */}
         {authUser && activeTab === 'profile' && (
-          <form onSubmit={handleSaveProfile} className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-            {/* SOL: Kişisel, Adres ve Fatura Bilgileri */}
-            <div className="lg:col-span-7 space-y-6">
-              <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 space-y-5">
-                <h2 className="text-lg font-extrabold text-slate-900 flex items-center gap-2">
-                  <MapPin className="w-5 h-5 text-[#51a885]" />
-                  Kişisel & Teslimat Adresi Bilgileri
-                </h2>
+          <div className="space-y-8">
+            <form onSubmit={handleSaveProfile} className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+              {/* SOL: Kişisel, Adres ve Fatura Bilgileri */}
+              <div className="lg:col-span-7 space-y-6">
+                <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 space-y-5">
+                  <h2 className="text-lg font-extrabold text-slate-900 flex items-center gap-2">
+                    <MapPin className="w-5 h-5 text-[#51a885]" />
+                    Kişisel &amp; Teslimat Adresi Bilgileri
+                  </h2>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-600 mb-1">Ad Soyad</label>
-                    <input
-                      type="text"
-                      value={profile.full_name}
-                      onChange={(e) => setProfile({ ...profile, full_name: e.target.value })}
-                      className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-600 mb-1">
-                      E-Posta Adresi
-                    </label>
-                    <input
-                      type="email"
-                      value={profile.email}
-                      onChange={(e) => setProfile({ ...profile, email: e.target.value })}
-                      className="w-full border border-slate-200 bg-slate-50 rounded-xl px-3.5 py-2.5 text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-600 mb-1">Telefon</label>
-                    <input
-                      type="tel"
-                      placeholder="05XX XXX XX XX"
-                      value={profile.phone}
-                      onChange={(e) => setProfile({ ...profile, phone: e.target.value })}
-                      className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-600 mb-1">
-                      T.C. Kimlik Numarası (Fatura İçin)
-                    </label>
-                    <input
-                      type="text"
-                      maxLength={11}
-                      placeholder="11 Haneli T.C. Kimlik No"
-                      value={profile.tc_no}
-                      onChange={(e) => setProfile({ ...profile, tc_no: e.target.value })}
-                      className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-600 mb-1">İlçe</label>
-                    <input
-                      type="text"
-                      placeholder="Örn: Ataşehir"
-                      value={profile.district}
-                      onChange={(e) => setProfile({ ...profile, district: e.target.value })}
-                      className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-600 mb-1">Mahalle</label>
-                    <input
-                      type="text"
-                      placeholder="Örn: Küçükbakkalköy Mah."
-                      value={profile.neighborhood}
-                      onChange={(e) => setProfile({ ...profile, neighborhood: e.target.value })}
-                      className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm"
-                    />
-                  </div>
-                  <div className="sm:col-span-2">
-                    <label className="block text-xs font-bold text-slate-600 mb-1">
-                      Açık Teslimat Adresi
-                    </label>
-                    <textarea
-                      rows={2}
-                      value={profile.full_address}
-                      onChange={(e) => setProfile({ ...profile, full_address: e.target.value })}
-                      placeholder="Cadde, sokak, bina ve daire bilgileriniz..."
-                      className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Fatura Tercihi */}
-              <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 space-y-4">
-                <h2 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
-                  <FileText className="w-5 h-5 text-[#51a885]" />
-                  Varsayılan Fatura Bilgileri
-                </h2>
-                <select
-                  value={profile.invoice_type}
-                  onChange={(e) => setProfile({ ...profile, invoice_type: e.target.value })}
-                  className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm"
-                >
-                  <option value="individual">Bireysel Fatura (T.C. Kimlik ile)</option>
-                  <option value="corporate">Kurumsal Fatura (Şirket Adına)</option>
-                </select>
-
-                {profile.invoice_type === 'corporate' && (
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <input
-                      type="text"
-                      placeholder="Firma Ünvanı"
-                      value={profile.company_name}
-                      onChange={(e) => setProfile({ ...profile, company_name: e.target.value })}
-                      className="border border-slate-200 rounded-xl px-3 py-2 text-xs"
-                    />
-                    <input
-                      type="text"
-                      placeholder="Vergi Dairesi"
-                      value={profile.tax_office}
-                      onChange={(e) => setProfile({ ...profile, tax_office: e.target.value })}
-                      className="border border-slate-200 rounded-xl px-3 py-2 text-xs"
-                    />
-                    <input
-                      type="text"
-                      placeholder="Vergi Numarası"
-                      value={profile.tax_no}
-                      onChange={(e) => setProfile({ ...profile, tax_no: e.target.value })}
-                      className="border border-slate-200 rounded-xl px-3 py-2 text-xs"
-                    />
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* SAĞ: VKİ (Vücut Kitle Endeksi) & Kalori Hesaplama Paneli */}
-            <div className="lg:col-span-5 bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 space-y-5 h-fit">
-              <h2 className="text-lg font-extrabold text-slate-900 flex items-center gap-2">
-                <Activity className="w-5 h-5 text-[#eab130]" />
-                VKİ & Kalori Hesaplama Profili
-              </h2>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-slate-600 mb-1">Boy (cm)</label>
-                  <input
-                    type="number"
-                    placeholder="177"
-                    value={profile.height_cm}
-                    onChange={(e) => setProfile({ ...profile, height_cm: e.target.value })}
-                    className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-bold"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-600 mb-1">Kilo (kg)</label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    placeholder="75"
-                    value={profile.weight_kg}
-                    onChange={(e) => setProfile({ ...profile, weight_kg: e.target.value })}
-                    className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-bold"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-600 mb-1">Yaş</label>
-                  <input
-                    type="number"
-                    placeholder="42"
-                    value={profile.age}
-                    onChange={(e) => setProfile({ ...profile, age: e.target.value })}
-                    className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-600 mb-1">Cinsiyet</label>
-                  <select
-                    value={profile.gender}
-                    onChange={(e) => setProfile({ ...profile, gender: e.target.value })}
-                    className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm"
-                  >
-                    <option value="female">Kadın</option>
-                    <option value="male">Erkek</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-600 mb-1">
-                  Alerjenler / Beslenme Notları
-                </label>
-                <textarea
-                  rows={2}
-                  placeholder="Örn: Laktoz hassasiyeti, ceviz alerjisi..."
-                  value={profile.allergies}
-                  onChange={(e) => setProfile({ ...profile, allergies: e.target.value })}
-                  className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm"
-                />
-              </div>
-
-              {/* Canlı Görsel VKİ (Vücut Kitle Endeksi) ve Kalori Analizi Kartı */}
-              {healthMetrics && (
-                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-4">
-                  <div className="flex items-center justify-between">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                      <span className="text-[11px] font-bold text-slate-500 block">
-                        Vücut Kitle Endeksi (VKİ)
-                      </span>
-                      <span className="text-2xl font-black text-slate-900">
-                        {healthMetrics.bmi}
-                      </span>
-                    </div>
-                    <span
-                      className={`text-xs font-extrabold px-3 py-1.5 rounded-full ${healthMetrics.bmiColor}`}
-                    >
-                      {healthMetrics.bmiLabel}
-                    </span>
-                  </div>
-
-                  {/* Renkli VKİ Skala Çubuğu */}
-                  <div className="space-y-1">
-                    <div className="relative h-3 rounded-full overflow-hidden flex">
-                      <div className="w-[20%] bg-blue-400" />
-                      <div className="w-[30%] bg-emerald-500" />
-                      <div className="w-[25%] bg-amber-400" />
-                      <div className="w-[25%] bg-red-500" />
-                      <div
-                        className="absolute top-0 bottom-0 w-1.5 bg-slate-950 rounded-full shadow"
-                        style={{ left: `calc(${healthMetrics.barPercent}% - 3px)` }}
+                      <label className="block text-xs font-bold text-slate-600 mb-1">Ad Soyad</label>
+                      <input
+                        type="text"
+                        value={profile.full_name}
+                        onChange={(e) => setProfile({ ...profile, full_name: e.target.value })}
+                        className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm"
                       />
                     </div>
-                    <div className="flex justify-between text-[10px] text-slate-400 font-semibold">
-                      <span>Zayıf (&lt;18.5)</span>
-                      <span>İdeal (18.5-24.9)</span>
-                      <span>Fazla (25-29.9)</span>
-                      <span>Obez (30+)</span>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1">
+                        E-Posta Adresi
+                      </label>
+                      <input
+                        type="email"
+                        value={profile.email}
+                        onChange={(e) => setProfile({ ...profile, email: e.target.value })}
+                        className="w-full border border-slate-200 bg-slate-50 rounded-xl px-3.5 py-2.5 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1">Telefon</label>
+                      <input
+                        type="tel"
+                        placeholder="05XX XXX XX XX"
+                        value={profile.phone}
+                        onChange={(e) => setProfile({ ...profile, phone: e.target.value })}
+                        className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1">
+                        T.C. Kimlik Numarası (Fatura İçin)
+                      </label>
+                      <input
+                        type="text"
+                        maxLength={11}
+                        placeholder="11 Haneli T.C. Kimlik No"
+                        value={profile.tc_no}
+                        onChange={(e) => setProfile({ ...profile, tc_no: e.target.value })}
+                        className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm"
+                      />
+                    </div>
+
+                    {/* İl Seçimi (Birden fazla aktif il varsa göster) */}
+                    {cities.length > 1 && (
+                      <div className="sm:col-span-2">
+                        <label className="block text-xs font-bold text-slate-600 mb-1">İl</label>
+                        <select
+                          value={profile.city_id}
+                          onChange={(e) => {
+                            const cid = Number(e.target.value)
+                            const cObj = cities.find((c) => c.id === cid)
+                            setProfile({
+                              ...profile,
+                              city_id: cid,
+                              city: cObj?.name || 'İstanbul',
+                              district_id: '',
+                              district: '',
+                              neighborhood_id: '',
+                              neighborhood: '',
+                            })
+                          }}
+                          className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm bg-white"
+                        >
+                          {cities.map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1">İlçe</label>
+                      <select
+                        value={profile.district_id}
+                        onChange={(e) => {
+                          const did = e.target.value
+                          const dObj = availableDistricts.find((d) => String(d.id) === did)
+                          setProfile({
+                            ...profile,
+                            district_id: did,
+                            district: dObj?.name || '',
+                            neighborhood_id: '',
+                            neighborhood: '',
+                          })
+                        }}
+                        className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm bg-white"
+                      >
+                        <option value="">İlçe Seçiniz...</option>
+                        {availableDistricts.map((d) => (
+                          <option key={d.id} value={d.id}>
+                            {d.name} ({d.side})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1">Mahalle</label>
+                      <select
+                        value={profile.neighborhood_id}
+                        disabled={!profile.district_id}
+                        onChange={(e) => {
+                          const nid = e.target.value
+                          const nObj = availableNeighborhoods.find((n) => String(n.id) === nid)
+                          setProfile({
+                            ...profile,
+                            neighborhood_id: nid,
+                            neighborhood: nObj?.name || '',
+                          })
+                        }}
+                        className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm bg-white disabled:bg-slate-50 disabled:text-slate-400"
+                      >
+                        <option value="">
+                          {profile.district_id ? 'Mahalle Seçiniz...' : 'Önce İlçe Seçin'}
+                        </option>
+                        {availableNeighborhoods.map((n) => (
+                          <option key={n.id} value={n.id}>
+                            {n.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="sm:col-span-2">
+                      <label className="block text-xs font-bold text-slate-600 mb-1">
+                        Açık Teslimat Adresi
+                      </label>
+                      <textarea
+                        rows={2}
+                        value={profile.full_address}
+                        onChange={(e) => setProfile({ ...profile, full_address: e.target.value })}
+                        placeholder="Cadde, sokak, bina ve daire bilgileriniz..."
+                        className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm"
+                      />
                     </div>
                   </div>
+                </div>
 
-                  {/* Detaylı Kalori ve İdeal Kilo Bilgileri */}
-                  <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-200 text-xs">
-                    <div className="bg-white p-2.5 rounded-xl border border-slate-100">
-                      <span className="text-[10px] text-slate-400 block">Bazal Metabolizma</span>
-                      <strong className="text-slate-900">{healthMetrics.bmr} kcal/gün</strong>
+                {/* Fatura Tercihi */}
+                <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 space-y-4">
+                  <h2 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                    <FileText className="w-5 h-5 text-[#51a885]" />
+                    Varsayılan Fatura Bilgileri
+                  </h2>
+                  <select
+                    value={profile.invoice_type}
+                    onChange={(e) => setProfile({ ...profile, invoice_type: e.target.value })}
+                    className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm"
+                  >
+                    <option value="individual">Bireysel Fatura (T.C. Kimlik ile)</option>
+                    <option value="corporate">Kurumsal Fatura (Şirket Adına)</option>
+                  </select>
+
+                  {profile.invoice_type === 'corporate' && (
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <input
+                        type="text"
+                        placeholder="Firma Ünvanı"
+                        value={profile.company_name}
+                        onChange={(e) => setProfile({ ...profile, company_name: e.target.value })}
+                        className="border border-slate-200 rounded-xl px-3 py-2 text-xs"
+                      />
+                      <input
+                        type="text"
+                        placeholder="Vergi Dairesi"
+                        value={profile.tax_office}
+                        onChange={(e) => setProfile({ ...profile, tax_office: e.target.value })}
+                        className="border border-slate-200 rounded-xl px-3 py-2 text-xs"
+                      />
+                      <input
+                        type="text"
+                        placeholder="Vergi Numarası"
+                        value={profile.tax_no}
+                        onChange={(e) => setProfile({ ...profile, tax_no: e.target.value })}
+                        className="border border-slate-200 rounded-xl px-3 py-2 text-xs"
+                      />
                     </div>
-                    <div className="bg-white p-2.5 rounded-xl border border-slate-100">
-                      <span className="text-[10px] text-slate-400 block">İdeal Kilo Aralığınız</span>
-                      <strong className="text-slate-900">
-                        {healthMetrics.idealMin} - {healthMetrics.idealMax} kg
-                      </strong>
-                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* SAĞ: VKİ (Vücut Kitle Endeksi) & Kalori Hesaplama Paneli */}
+              <div className="lg:col-span-5 bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 space-y-5 h-fit">
+                <h2 className="text-lg font-extrabold text-slate-900 flex items-center gap-2">
+                  <Activity className="w-5 h-5 text-[#eab130]" />
+                  VKİ &amp; Kalori Hesaplama Profili
+                </h2>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 mb-1">Boy (cm)</label>
+                    <input
+                      type="number"
+                      placeholder="177"
+                      value={profile.height_cm}
+                      onChange={(e) => setProfile({ ...profile, height_cm: e.target.value })}
+                      className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-bold"
+                    />
                   </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 mb-1">Kilo (kg)</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      placeholder="75"
+                      value={profile.weight_kg}
+                      onChange={(e) => setProfile({ ...profile, weight_kg: e.target.value })}
+                      className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-bold"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 mb-1">Yaş</label>
+                    <input
+                      type="number"
+                      placeholder="42"
+                      value={profile.age}
+                      onChange={(e) => setProfile({ ...profile, age: e.target.value })}
+                      className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 mb-1">Cinsiyet</label>
+                    <select
+                      value={profile.gender}
+                      onChange={(e) => setProfile({ ...profile, gender: e.target.value })}
+                      className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm"
+                    >
+                      <option value="female">Kadın</option>
+                      <option value="male">Erkek</option>
+                    </select>
+                  </div>
+                </div>
 
-                  <div className="bg-[#51a885]/12 border border-[#51a885]/30 rounded-xl p-3 flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Flame className="w-5 h-5 text-[#51a885]" />
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1">
+                    Alerjenler / Beslenme Notları
+                  </label>
+                  <textarea
+                    rows={2}
+                    placeholder="Örn: Laktoz hassasiyeti, ceviz alerjisi..."
+                    value={profile.allergies}
+                    onChange={(e) => setProfile({ ...profile, allergies: e.target.value })}
+                    className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm"
+                  />
+                </div>
+
+                {healthMetrics && (
+                  <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-4">
+                    <div className="flex items-center justify-between">
                       <div>
-                        <span className="text-[10px] font-bold text-slate-600 block">
-                          Zayıflama İçin Günlük Hedef
+                        <span className="text-[11px] font-bold text-slate-500 block">
+                          Vücut Kitle Endeksi (VKİ)
                         </span>
-                        <strong className="text-base font-black text-[#0d1f18]">
-                          ~{healthMetrics.targetCalories} kcal
+                        <span className="text-2xl font-black text-slate-900">
+                          {healthMetrics.bmi}
+                        </span>
+                      </div>
+                      <span
+                        className={`text-xs font-extrabold px-3 py-1.5 rounded-full ${healthMetrics.bmiColor}`}
+                      >
+                        {healthMetrics.bmiLabel}
+                      </span>
+                    </div>
+
+                    <div className="space-y-1">
+                      <div className="relative h-3 rounded-full overflow-hidden flex">
+                        <div className="w-[20%] bg-blue-400" />
+                        <div className="w-[30%] bg-emerald-500" />
+                        <div className="w-[25%] bg-amber-400" />
+                        <div className="w-[25%] bg-red-500" />
+                        <div
+                          className="absolute top-0 bottom-0 w-1.5 bg-slate-950 rounded-full shadow"
+                          style={{ left: `calc(${healthMetrics.barPercent}% - 3px)` }}
+                        />
+                      </div>
+                      <div className="flex justify-between text-[10px] text-slate-400 font-semibold">
+                        <span>Zayıf (&lt;18.5)</span>
+                        <span>İdeal (18.5-24.9)</span>
+                        <span>Fazla (25-29.9)</span>
+                        <span>Obez (30+)</span>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-200 text-xs">
+                      <div className="bg-white p-2.5 rounded-xl border border-slate-100">
+                        <span className="text-[10px] text-slate-400 block">Bazal Metabolizma</span>
+                        <strong className="text-slate-900">{healthMetrics.bmr} kcal/gün</strong>
+                      </div>
+                      <div className="bg-white p-2.5 rounded-xl border border-slate-100">
+                        <span className="text-[10px] text-slate-400 block">İdeal Kilo Aralığınız</span>
+                        <strong className="text-slate-900">
+                          {healthMetrics.idealMin} - {healthMetrics.idealMax} kg
                         </strong>
                       </div>
                     </div>
-                    <Link
-                      href="/paketler"
-                      className="text-xs font-extrabold text-[#51a885] hover:underline flex items-center gap-1"
-                    >
-                      Paket Seç <ArrowRight className="w-3.5 h-3.5" />
-                    </Link>
-                  </div>
-                </div>
-              )}
 
-              <button
-                type="submit"
-                disabled={savingProfile}
-                className="w-full bg-[#51a885] hover:bg-[#3f8d6d] text-white font-bold py-3.5 rounded-xl text-sm flex items-center justify-center gap-2 transition cursor-pointer"
-              >
-                <Save className="w-4 h-4" />
-                {savingProfile ? 'Kaydediliyor...' : 'Tüm Bilgilerimi Kaydet'}
-              </button>
-            </div>
-          </form>
+                    <div className="bg-[#51a885]/12 border border-[#51a885]/30 rounded-xl p-3 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Flame className="w-5 h-5 text-[#51a885]" />
+                        <div>
+                          <span className="text-[10px] font-bold text-slate-600 block">
+                            Zayıflama İçin Günlük Hedef
+                          </span>
+                          <strong className="text-base font-black text-[#0d1f18]">
+                            ~{healthMetrics.targetCalories} kcal
+                          </strong>
+                        </div>
+                      </div>
+                      <Link
+                        href="/paketler"
+                        className="text-xs font-extrabold text-[#51a885] hover:underline flex items-center gap-1"
+                      >
+                        Paket Seç <ArrowRight className="w-3.5 h-3.5" />
+                      </Link>
+                    </div>
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={savingProfile}
+                  className="w-full bg-[#51a885] hover:bg-[#3f8d6d] text-white font-bold py-3.5 rounded-xl text-sm flex items-center justify-center gap-2 transition cursor-pointer"
+                >
+                  <Save className="w-4 h-4" />
+                  {savingProfile ? 'Kaydediliyor...' : 'Tüm Bilgilerimi Kaydet'}
+                </button>
+              </div>
+            </form>
+
+            {/* KİLO & FORM GELİŞİM GRAFİĞİ */}
+            <WeightProgressTracker
+              userId={authUser.id}
+              currentWeight={profile.weight_kg ? Number(profile.weight_kg) : null}
+              targetWeight={profile.target_weight_kg ? Number(profile.target_weight_kg) : null}
+              onWeightUpdated={(newWeight) =>
+                setProfile((prev: any) => ({ ...prev, weight_kg: String(newWeight) }))
+              }
+            />
+          </div>
         )}
 
         {/* SEKME 2: SİPARİŞLERİM & MİSAFİR SORGULAMA */}
