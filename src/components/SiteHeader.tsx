@@ -4,11 +4,11 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
+import PineappleIcon from '@/components/PineappleIcon'
 import {
   ChevronDown,
   User,
   ShoppingBag,
-  Sparkles,
   Menu,
   X,
   Phone,
@@ -145,7 +145,7 @@ export default function SiteHeader({ menus, generalSettings }: Props) {
               href="/#kalori-sihirbazi"
               className="hidden xl:inline-flex items-center gap-1.5 text-xs font-bold text-[#0d1f18] hover:text-[#51a885] px-3.5 py-2 rounded-full bg-slate-100/80 hover:bg-[#51a885]/10 transition"
             >
-              <Sparkles className="w-3.5 h-3.5 text-[#eab130]" />
+              <PineappleIcon className="w-4 h-4" />
               Paket Sihirbazı
             </Link>
 
@@ -229,8 +229,9 @@ export default function SiteHeader({ menus, generalSettings }: Props) {
               <Link
                 href="/#kalori-sihirbazi"
                 onClick={() => setMobileOpen(false)}
-                className="bg-slate-100 text-slate-900 font-bold text-xs py-3 rounded-xl text-center"
+                className="bg-slate-100 text-slate-900 font-bold text-xs py-3 rounded-xl flex items-center justify-center gap-1.5"
               >
+                <PineappleIcon className="w-3.5 h-3.5" />
                 Paket Sihirbazı
               </Link>
               <Link

@@ -2,7 +2,8 @@
 'use client'
 
 import { useState, useMemo } from 'react'
-import { ChevronDown, Search, Sparkles } from 'lucide-react'
+import { ChevronDown, Search } from 'lucide-react'
+import PineappleIcon from '@/components/PineappleIcon'
 
 interface FaqItem {
   id: number
@@ -91,8 +92,8 @@ export default function FaqAccordion({ faqs = [] }: { faqs?: FaqItem[] }) {
                   className="w-full text-left px-5 sm:px-6 py-4 sm:py-5 flex items-center justify-between gap-4 cursor-pointer"
                 >
                   <div className="space-y-1">
-                    <span className="inline-flex items-center gap-1 text-[10px] font-extrabold uppercase tracking-wider text-[#51a885]">
-                      <Sparkles className="w-3 h-3 text-[#eab130]" />
+                    <span className="inline-flex items-center gap-1.5 text-[10px] font-extrabold uppercase tracking-wider text-[#51a885]">
+                      <PineappleIcon className="w-3.5 h-3.5" />
                       {item.category}
                     </span>
                     <h3 className="text-sm sm:text-base font-extrabold text-slate-900">

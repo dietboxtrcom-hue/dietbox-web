@@ -6,14 +6,13 @@ import Link from 'next/link'
 import {
   Flame,
   Droplets,
-  Scale,
   Activity,
   Target,
-  Sparkles,
   ArrowRight,
   CheckCircle2,
   Info,
 } from 'lucide-react'
+import PineappleIcon from '@/components/PineappleIcon'
 import { formatTRY } from '@/lib/pricing-engine'
 
 const ACTIVITIES = [
@@ -423,7 +422,7 @@ export default function CalorieCalculatorClient({ packages = [] }: { packages?: 
                 href="/paketler"
                 className="w-full bg-[#eab130] hover:bg-[#d49b1a] text-slate-950 font-black text-xs py-3.5 px-5 rounded-2xl flex items-center justify-center gap-2 transition shadow-lg"
               >
-                <Sparkles className="w-4 h-4" />
+                <PineappleIcon className="w-4 h-4" variant="dark" />
                 Kalorime Uygun Paketleri İncele
                 <ArrowRight className="w-4 h-4" />
               </Link>
