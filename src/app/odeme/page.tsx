@@ -3,7 +3,7 @@
 
 import { useEffect, useState, useMemo } from 'react'
 import Link from 'next/link'
-import { addDays, format, isSunday } from 'date-fns'
+import { addDays, format, isSunday, startOfDay } from 'date-fns'
 import { tr } from 'date-fns/locale'
 import { createClient } from '@/lib/supabase/client'
 import { formatTRY } from '@/lib/pricing-engine'
@@ -84,7 +84,7 @@ export default function CheckoutPage() {
       const prep = rules?.value?.min_prep_days ?? 2
       setMinPrepDays(prep)
 
-      const earliest = getEarliestStartDate(prep, blockedList)
+      const earliest = getEarliestStartDate(prep, blockedList, new Date())
       setStartDate(format(earliest, 'yyyy-MM-dd'))
 
       // Giriş yapmış kullanıcı varsa profilindeki TÜM bilgileri otomatik doldur
@@ -133,8 +133,9 @@ export default function CheckoutPage() {
   }, [])
 
   const calendarDays = useMemo(() => {
-    const today = new Date()
-    const earliest = getEarliestStartDate(minPrepDays, blockedDates, today)
+    const now = new Date()
+    const today = startOfDay(now)
+    const earliest = getEarliestStartDate(minPrepDays, blockedDates, now)
     const days = []
 
     for (let i = 0; i < 18; i++) {
@@ -220,7 +221,7 @@ export default function CheckoutPage() {
         try {
           const supabase = createClient()
           let matchedDistrictId: number | null = draft.districtId ? Number(draft.districtId) : null
-          let matchedCityId: number | null = draft.cityId ? Number(draft.cityId) : null
+          const matchedCityId: number | null = draft.cityId ? Number(draft.cityId) : null
 
           if (draft.neighborhoodId && !matchedDistrictId) {
             const { data: nRow } = await supabase

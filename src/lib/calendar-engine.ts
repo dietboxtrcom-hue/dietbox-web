@@ -10,6 +10,11 @@ export interface ScheduledDeliveryDay {
 /**
  * Sipariş anından itibaren ilk X hazırlık gününü (varsayılan 2 gün) kapatarak
  * müşterinin seçebileceği ilk geçerli başlangıç tarihini döner.
+ * - Hafta içi (Pzt-Per): +2 gün
+ * - Cuma: +2 gün Pazar'a denk geldiği için Pazartesi
+ * - Cumartesi 12:00'ye kadar: Pazartesi (+2 gün)
+ * - Cumartesi 12:00 ve sonrası: Salı (+3 gün)
+ * - Pazar: Salı (+2 gün)
  */
 export function getEarliestStartDate(
   minPrepDays: number = 2,
@@ -17,8 +22,10 @@ export function getEarliestStartDate(
   now: Date = new Date()
 ): Date {
   const blockedSet = new Set(blockedDates)
-  // İlk 2 gün kapalı kuralı: Bugün + (minPrepDays + 1)
-  let candidate = addDays(startOfDay(now), minPrepDays + 1)
+  const isSatAfterNoon = isSaturday(now) && now.getHours() >= 12
+  const daysToAdd = isSatAfterNoon ? minPrepDays + 1 : minPrepDays
+
+  let candidate = addDays(startOfDay(now), daysToAdd)
 
   // İlk uygun gün Pazar ise veya kapalı/tatil günüyse bir sonraki güne kaydır
   while (isSunday(candidate) || blockedSet.has(format(candidate, 'yyyy-MM-dd'))) {
@@ -37,7 +44,7 @@ export function isDateSelectableForStart(
   blockedDates: string[] = [],
   now: Date = new Date()
 ): boolean {
-  const earliest = addDays(startOfDay(now), minPrepDays + 1)
+  const earliest = getEarliestStartDate(minPrepDays, blockedDates, now)
   const target = startOfDay(date)
 
   if (target < earliest) return false
