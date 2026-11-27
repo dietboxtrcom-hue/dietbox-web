@@ -4,6 +4,7 @@ export interface PriceCalculationInput {
   durationDays: number
   customDurationPrice?: number | null // Paketin o gün sayısı için özel belirlenen toplam fiyatı
   discountPercentage?: number
+  dailyCustomizationDelta?: number // Laktozsuz (+100), Süt Ürünsüz (+130), Öğün Çıkarma (-100 / -35 / -70)
   district?: any | null
   neighborhood?: any | null
   selectedAddons?: any[]
@@ -13,6 +14,8 @@ export interface PriceCalculationInput {
 export interface PriceBreakdown {
   effectiveDailyPackagePrice: number
   packageSubtotal: number
+  dailyCustomizationDelta: number
+  customizationTotal: number
   dailyLogisticsFee: number
   logisticsFeeTotal: number
   addonsTotal: number
@@ -26,18 +29,22 @@ export function calculateDietboxPrice(input: PriceCalculationInput): PriceBreakd
     durationDays,
     customDurationPrice = null,
     discountPercentage = 0,
+    dailyCustomizationDelta = 0,
     district,
     neighborhood,
     selectedAddons = [],
     quantity = 1,
   } = input
 
-  // 1. Paket Ara Toplamı:
-  // Eğer bu gün periyodu için özel (orantısız) bir paket fiyatı girilmişse doğrudan onu kullan!
+  // 1. Paket Ara Toplamı
   let packageSubtotal = 0
   let effectiveDailyPackagePrice = Number(dailyBasePrice)
 
-  if (customDurationPrice !== null && customDurationPrice !== undefined && Number(customDurationPrice) > 0) {
+  if (
+    customDurationPrice !== null &&
+    customDurationPrice !== undefined &&
+    Number(customDurationPrice) > 0
+  ) {
     packageSubtotal = Number(customDurationPrice)
     effectiveDailyPackagePrice = Math.round(packageSubtotal / Math.max(1, durationDays))
   } else {
@@ -46,8 +53,12 @@ export function calculateDietboxPrice(input: PriceCalculationInput): PriceBreakd
     packageSubtotal = effectiveDailyPackagePrice * durationDays
   }
 
-  // 2. Mahalle / İlçe Lojistik Ek Ücreti:
-  // Mahallenin period_fees JSON'unda seçilen gün (örn "14": 980) varsa onu alır, yoksa günlük ücreti çarpar
+  // 2. Paket Özelleştirme Farkı (Laktozsuz / Süt Ürünsüz / Öğün Çıkarma)
+  const safeDailyDelta = Number(dailyCustomizationDelta) || 0
+  const rawCustomizationTotal = safeDailyDelta * durationDays
+  const customizationTotal = Math.max(-packageSubtotal, rawCustomizationTotal)
+
+  // 3. Mahalle / İlçe Lojistik Ek Ücreti
   let logisticsFeeTotal = 0
   let dailyLogisticsFee = 0
 
@@ -61,7 +72,11 @@ export function calculateDietboxPrice(input: PriceCalculationInput): PriceBreakd
     logisticsFeeTotal = Number(neighborhood.period_fees[periodKey])
     dailyLogisticsFee = Math.round(logisticsFeeTotal / Math.max(1, durationDays))
   } else {
-    if (neighborhood && neighborhood.custom_daily_fee !== null && neighborhood.custom_daily_fee !== undefined) {
+    if (
+      neighborhood &&
+      neighborhood.custom_daily_fee !== null &&
+      neighborhood.custom_daily_fee !== undefined
+    ) {
       dailyLogisticsFee = Number(neighborhood.custom_daily_fee)
     } else if (district && district.default_daily_fee) {
       dailyLogisticsFee = Number(district.default_daily_fee)
@@ -69,16 +84,18 @@ export function calculateDietboxPrice(input: PriceCalculationInput): PriceBreakd
     logisticsFeeTotal = dailyLogisticsFee * durationDays
   }
 
-  // 3. Çapraz Satış (Addon) Toplamı
+  // 4. Çapraz Satış (Addon) Toplamı
   const addonsTotal = selectedAddons.reduce((sum, item) => sum + Number(item.price), 0)
 
-  // 4. Genel Toplam
-  const unitTotal = packageSubtotal + logisticsFeeTotal + addonsTotal
+  // 5. Genel Toplam
+  const unitTotal = Math.max(0, packageSubtotal + customizationTotal) + logisticsFeeTotal + addonsTotal
   const grandTotal = unitTotal * quantity
 
   return {
     effectiveDailyPackagePrice,
     packageSubtotal,
+    dailyCustomizationDelta: safeDailyDelta,
+    customizationTotal,
     dailyLogisticsFee,
     logisticsFeeTotal,
     addonsTotal,

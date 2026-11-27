@@ -25,6 +25,7 @@ import {
   Clock,
   Flame,
   UserCheck,
+  SlidersHorizontal,
 } from 'lucide-react'
 
 interface Props {
@@ -35,6 +36,14 @@ interface Props {
   neighborhoods: Neighborhood[]
   addons: AddonProduct[]
 }
+
+const OFFICE_MEAL_VARIANTS = [
+  { key: 'single_main', label: 'Tek Ana Öğün', dailyDelta: 0 },
+  { key: '1m_1s_meat', label: '1 Ana + 1 Ara (Et Sever / Et & Sebze Karışık)', dailyDelta: 20 },
+  { key: '1m_2s_meat', label: '1 Ana + 2 Ara (Et Sever / Et & Sebze Karışık)', dailyDelta: 40 },
+  { key: '1m_1s_veg', label: '1 Ana + 1 Ara (Vejetaryen)', dailyDelta: 0 },
+  { key: '1m_2s_veg', label: '1 Ana + 2 Ara (Vejetaryen)', dailyDelta: 20 },
+]
 
 export default function PackageConfigurator({
   pkg,
@@ -49,6 +58,39 @@ export default function PackageConfigurator({
 
   const [menuOpen, setMenuOpen] = useState<boolean>(false)
   const [profileRegionApplied, setProfileRegionApplied] = useState<boolean>(false)
+
+  // Paket türü kontrolleri (Detoks / Ofis / Zaten Laktozsuz-Süt Ürünsüz)
+  const titleLower = (pkg.title || '').toLocaleLowerCase('tr-TR')
+  const categoryLower = ((pkg as any).category || '').toLocaleLowerCase('tr-TR')
+  const slugLower = (pkg.slug || '').toLowerCase()
+
+  const isDetox =
+    titleLower.includes('detoks') ||
+    titleLower.includes('detox') ||
+    categoryLower.includes('detoks') ||
+    slugLower.includes('detoks') ||
+    slugLower.includes('detox')
+
+  const isOffice =
+    titleLower.includes('ofis') ||
+    categoryLower.includes('ofis') ||
+    slugLower.includes('ofis')
+
+  const isAlreadyLactoseOrDairyFree =
+    titleLower.includes('laktozsuz') ||
+    titleLower.includes('süt ürünsüz') ||
+    titleLower.includes('sut urunsuz') ||
+    slugLower.includes('laktozsuz') ||
+    slugLower.includes('sut-urunsuz')
+
+  const showDietAddonOption = !isAlreadyLactoseOrDairyFree
+  const showMealRemovalOption = !isDetox && !isOffice
+
+  // Özelleştirme State'leri
+  const [dietAddon, setDietAddon] = useState<'none' | 'lactose_free' | 'dairy_free'>('none')
+  const [removedMainMeals, setRemovedMainMeals] = useState<string[]>([]) // 'no_breakfast' | 'no_lunch' | 'no_dinner'
+  const [removedSnackOption, setRemovedSnackOption] = useState<'none' | 'no_1_snack' | 'no_2_snacks'>('none')
+  const [officeVariantKey, setOfficeVariantKey] = useState<string>('single_main')
 
   // Paketin kendi özel periyotlarını (custom_duration_prices) baz al
   const effectiveTiers = useMemo(() => {
@@ -73,7 +115,6 @@ export default function PackageConfigurator({
     }))
   }, [pkg, durations])
 
-  // Seçili periyot satırı indeksi
   const [selectedTierIdx, setSelectedTierIdx] = useState<number>(0)
 
   useEffect(() => {
@@ -88,7 +129,7 @@ export default function PackageConfigurator({
   const currentTier = effectiveTiers[selectedTierIdx] || effectiveTiers[0]
   const selectedDays = currentTier?.days || 14
 
-  // Kalori seçimi (1200 / 1500 / 1800 kcal içeren paketler için)
+  // Kalori seçimi
   const [selectedCalorieOption, setSelectedCalorieOption] = useState<string>('Diyetisyen Belirlesin')
   const hasCalorieChoice = (pkg.calories_range || '').includes('1200 / 1500 / 1800')
 
@@ -253,6 +294,68 @@ export default function PackageConfigurator({
     setSelectedNeighborhoodId(nextNeighs[0]?.id || 0)
   }
 
+  const toggleMainMealRemoval = (mealKey: string) => {
+    setRemovedMainMeals((prev) =>
+      prev.includes(mealKey) ? prev.filter((k) => k !== mealKey) : [...prev, mealKey]
+    )
+  }
+
+  // Günlük özelleştirme farkını ve özet etiketlerini hesapla
+  const { dailyCustomizationDelta, customizationLabels } = useMemo(() => {
+    let delta = 0
+    const labels: string[] = []
+
+    if (isOffice) {
+      const ov = OFFICE_MEAL_VARIANTS.find((v) => v.key === officeVariantKey)
+      if (ov) {
+        delta += ov.dailyDelta
+        labels.push(ov.label)
+      }
+    }
+
+    if (showDietAddonOption) {
+      if (dietAddon === 'lactose_free') {
+        delta += 100
+        labels.push('Laktozsuz')
+      } else if (dietAddon === 'dairy_free') {
+        delta += 130
+        labels.push('Süt Ürünsüz')
+      }
+    }
+
+    if (showMealRemovalOption) {
+      if (removedMainMeals.includes('no_breakfast')) {
+        delta -= 100
+        labels.push('Kahvaltısız')
+      }
+      if (removedMainMeals.includes('no_lunch')) {
+        delta -= 100
+        labels.push('Öğlensiz')
+      }
+      if (removedMainMeals.includes('no_dinner')) {
+        delta -= 100
+        labels.push('Akşamsız')
+      }
+      if (removedSnackOption === 'no_1_snack') {
+        delta -= 35
+        labels.push('1 Ara Öğünsüz')
+      } else if (removedSnackOption === 'no_2_snacks') {
+        delta -= 70
+        labels.push('2 Ara Öğünsüz')
+      }
+    }
+
+    return { dailyCustomizationDelta: delta, customizationLabels: labels }
+  }, [
+    isOffice,
+    officeVariantKey,
+    showDietAddonOption,
+    dietAddon,
+    showMealRemovalOption,
+    removedMainMeals,
+    removedSnackOption,
+  ])
+
   const currentDistrict = districts.find((d) => d.id === selectedDistrictId) || null
   const currentNeighborhood =
     activeNeighborhoods.find((n) => n.id === selectedNeighborhoodId) || null
@@ -265,6 +368,7 @@ export default function PackageConfigurator({
       durationDays: selectedDays,
       customDurationPrice: currentTier?.total_price ?? null,
       discountPercentage: currentTier?.discount_percentage || 0,
+      dailyCustomizationDelta,
       district: currentDistrict,
       neighborhood: currentNeighborhood,
       selectedAddons: selectedAddonsList,
@@ -274,6 +378,7 @@ export default function PackageConfigurator({
     pkg.daily_base_price,
     selectedDays,
     currentTier,
+    dailyCustomizationDelta,
     currentDistrict,
     currentNeighborhood,
     selectedAddonsList,
@@ -292,12 +397,15 @@ export default function PackageConfigurator({
       return
     }
 
+    const customSuffix =
+      customizationLabels.length > 0 ? ` [${customizationLabels.join(' • ')}]` : ''
+
     const orderDraft = {
       packageId: pkg.id,
       packageSlug: pkg.slug,
       packageTitle: `${pkg.title} (${currentTier?.label || `${selectedDays} Günlük`})${
         hasCalorieChoice ? ` - ${selectedCalorieOption}` : ''
-      }`,
+      }${customSuffix}`,
       dailyBasePrice: pkg.daily_base_price,
       durationDays: selectedDays,
       cityId: selectedCityId,
@@ -308,6 +416,7 @@ export default function PackageConfigurator({
       neighborhoodId: currentNeighborhood.id,
       neighborhoodName: currentNeighborhood.name,
       addonIds: selectedAddonIds,
+      customizations: customizationLabels,
       quantity,
       priceBreakdown,
       prefillHeight: searchParams.get('height') || '',
@@ -530,6 +639,145 @@ export default function PackageConfigurator({
             </span>
           </div>
         </div>
+
+        {/* OFİS PAKETİ 5 ÖĞÜN SEÇENEĞİ */}
+        {isOffice && (
+          <div className="pt-3 border-t border-slate-100 space-y-2">
+            <label className="block text-xs font-bold text-slate-800 flex items-center gap-1.5">
+              <Utensils className="w-3.5 h-3.5 text-emerald-600" />
+              Ofis Öğün Seçeneği <span className="text-red-500">*</span>
+            </label>
+            <select
+              value={officeVariantKey}
+              onChange={(e) => setOfficeVariantKey(e.target.value)}
+              className="w-full border border-slate-300 rounded-lg px-3.5 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-emerald-600"
+            >
+              {OFFICE_MEAL_VARIANTS.map((v) => (
+                <option key={v.key} value={v.key}>
+                  {v.label} ({v.dailyDelta > 0 ? `+${v.dailyDelta} ₺ / Gün` : 'Baz Fiyat'})
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {/* PAKET ÖZELLEŞTİRME (LAKTOZSUZ / SÜT ÜRÜNSÜZ & ÖĞÜN ÇIKARTMA) */}
+        {(showDietAddonOption || showMealRemovalOption) && (
+          <div className="pt-4 border-t border-slate-100 space-y-4">
+            <div className="flex items-center justify-between">
+              <span className="flex items-center gap-1.5 text-sm font-bold text-slate-900">
+                <SlidersHorizontal className="w-4 h-4 text-emerald-600" />
+                Paketinizi Özelleştirin (İsteğe Bağlı)
+              </span>
+              {priceBreakdown.customizationTotal !== 0 && (
+                <span
+                  className={`text-xs font-extrabold px-2.5 py-1 rounded-full ${
+                    priceBreakdown.customizationTotal > 0
+                      ? 'bg-amber-50 text-amber-800 border border-amber-200'
+                      : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                  }`}
+                >
+                  {priceBreakdown.customizationTotal > 0 ? '+' : ''}
+                  {formatTRY(priceBreakdown.customizationTotal)} ({selectedDays} Gün)
+                </span>
+              )}
+            </div>
+
+            {/* Laktozsuz / Süt Ürünsüz Seçeneği */}
+            {showDietAddonOption && (
+              <div className="space-y-1.5">
+                <span className="block text-xs font-semibold text-slate-600">
+                  Beslenme Hassasiyeti Tercihi
+                </span>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  {[
+                    { key: 'none', label: 'Standart', priceText: 'Dahil' },
+                    { key: 'lactose_free', label: 'Laktozsuz', priceText: '+100 ₺ / gün' },
+                    { key: 'dairy_free', label: 'Süt Ürünsüz', priceText: '+130 ₺ / gün' },
+                  ].map((opt) => {
+                    const active = dietAddon === opt.key
+                    return (
+                      <button
+                        key={opt.key}
+                        type="button"
+                        onClick={() => setDietAddon(opt.key as any)}
+                        className={`p-2.5 rounded-xl border text-left transition cursor-pointer ${
+                          active
+                            ? 'border-emerald-600 bg-emerald-50/70 text-emerald-950'
+                            : 'border-slate-200 hover:border-slate-300 bg-white text-slate-700'
+                        }`}
+                      >
+                        <strong className="block text-xs font-bold">{opt.label}</strong>
+                        <span className="text-[11px] opacity-75">{opt.priceText}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Öğün Çıkartma Seçeneği (Detoks Hariç) */}
+            {showMealRemovalOption && (
+              <div className="space-y-2.5">
+                <span className="block text-xs font-semibold text-slate-600">
+                  Öğün Çıkartma (Günlük İndirim)
+                </span>
+
+                {/* Ana Öğün Çıkartma */}
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { key: 'no_breakfast', label: 'Kahvaltısız', delta: '-100 ₺ / gün' },
+                    { key: 'no_lunch', label: 'Öğlensiz', delta: '-100 ₺ / gün' },
+                    { key: 'no_dinner', label: 'Akşamsız', delta: '-100 ₺ / gün' },
+                  ].map((m) => {
+                    const active = removedMainMeals.includes(m.key)
+                    return (
+                      <button
+                        key={m.key}
+                        type="button"
+                        onClick={() => toggleMainMealRemoval(m.key)}
+                        className={`p-2.5 rounded-xl border text-left transition cursor-pointer ${
+                          active
+                            ? 'border-emerald-600 bg-emerald-50/70 text-emerald-950'
+                            : 'border-slate-200 hover:border-slate-300 bg-white text-slate-700'
+                        }`}
+                      >
+                        <strong className="block text-xs font-bold">{m.label}</strong>
+                        <span className="text-[11px] text-emerald-700 font-semibold">{m.delta}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+
+                {/* Ara Öğün Çıkartma */}
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { key: 'none', label: 'Ara Öğünler Dahil', delta: 'Standart' },
+                    { key: 'no_1_snack', label: '1 Ara Öğünsüz', delta: '-35 ₺ / gün' },
+                    { key: 'no_2_snacks', label: '2 Ara Öğünsüz', delta: '-70 ₺ / gün' },
+                  ].map((s) => {
+                    const active = removedSnackOption === s.key
+                    return (
+                      <button
+                        key={s.key}
+                        type="button"
+                        onClick={() => setRemovedSnackOption(s.key as any)}
+                        className={`p-2.5 rounded-xl border text-left transition cursor-pointer ${
+                          active
+                            ? 'border-emerald-600 bg-emerald-50/70 text-emerald-950'
+                            : 'border-slate-200 hover:border-slate-300 bg-white text-slate-700'
+                        }`}
+                      >
+                        <strong className="block text-xs font-bold">{s.label}</strong>
+                        <span className="text-[11px] text-emerald-700 font-semibold">{s.delta}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Kalori Seçimi (Varsa) */}
         {hasCalorieChoice && (

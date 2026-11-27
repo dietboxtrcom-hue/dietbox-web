@@ -3,7 +3,7 @@
 
 import { useEffect, useState, useMemo } from 'react'
 import Link from 'next/link'
-import { addDays, format, isSunday } from 'date-fns'
+import { addDays, format, isSunday, parseISO, subDays } from 'date-fns'
 import { tr } from 'date-fns/locale'
 import { createClient } from '@/lib/supabase/client'
 import { formatTRY } from '@/lib/pricing-engine'
@@ -24,6 +24,7 @@ import {
   ArrowLeft,
   Truck,
   UserCheck,
+  Info,
 } from 'lucide-react'
 import PineappleIcon from '@/components/PineappleIcon'
 
@@ -103,7 +104,6 @@ export default function CheckoutPage() {
       const earliest = getEarliestStartDate(prep, blockedList, new Date())
       setStartDate(format(earliest, 'yyyy-MM-dd'))
 
-      // Giriş yapmış kullanıcı varsa profilindeki TÜM bilgileri otomatik doldur
       if (userRes?.user) {
         const u = userRes.user
         setLoggedUserId(u.id)
@@ -114,11 +114,7 @@ export default function CheckoutPage() {
           .eq('id', u.id)
           .single()
 
-        const fullNameStr = (
-          prof?.full_name ||
-          u.user_metadata?.full_name ||
-          ''
-        ).trim()
+        const fullNameStr = (prof?.full_name || u.user_metadata?.full_name || '').trim()
 
         if (fullNameStr) {
           const parts = fullNameStr.split(/\s+/)
@@ -153,8 +149,8 @@ export default function CheckoutPage() {
     [minPrepDays, blockedDates, nowTick]
   )
 
-  // Saat değiştiğinde (ör. 11:59 -> 12:00 geçişinde) takvim kutularını otomatik yenile
   const hourBucket = format(nowTick, 'yyyy-MM-dd-HH')
+  const allowSundayStart = scheduleType === 'every_day_sat_double'
 
   const calendarDays = useMemo(() => {
     const now = new Date()
@@ -167,13 +163,17 @@ export default function CheckoutPage() {
       const dateStr = format(d, 'yyyy-MM-dd')
       const isPrepLocked = d < earliest
       const isSun = isSunday(d)
-      const isHoliday = blockedDates.includes(dateStr)
-      const disabled = isPrepLocked || isSun || isHoliday
+      const prevSatStr = format(subDays(d, 1), 'yyyy-MM-dd')
+      const isPrevSatBlocked = isSun && blockedDates.includes(prevSatStr)
+      const isHoliday = blockedDates.includes(dateStr) || isPrevSatBlocked
+      const isSundayBlocked = isSun && !allowSundayStart
+      const disabled = isPrepLocked || isSundayBlocked || isHoliday
 
       let reason = ''
       if (isPrepLocked) reason = 'Hazırlık Süresi (Kapalı)'
-      else if (isSun) reason = 'Pazar (Kapalı)'
+      else if (isSundayBlocked) reason = 'Bu planda Pazar başlangıç kapalıdır'
       else if (isHoliday) reason = 'Özel Gün / Kota Dolu'
+      else if (isSun) reason = 'Pazar Başlangıç (Teslimat Cumartesi Sabahı Yapılır)'
 
       days.push({
         date: d,
@@ -181,14 +181,15 @@ export default function CheckoutPage() {
         dayNum: format(d, 'd'),
         dayName: format(d, 'EEE', { locale: tr }),
         monthName: format(d, 'MMM', { locale: tr }),
+        isSun,
         disabled,
         reason,
       })
     }
     return days
-  }, [minPrepDays, blockedDates, hourBucket])
+  }, [minPrepDays, blockedDates, hourBucket, allowSundayStart])
 
-  // Eğer kullanıcı sayfadayken saat 12:00'yi geçerse seçili tarih kilitlenirse otomatik güncelle
+  // Saat 12:00 geçişinde veya teslimat planı değiştiğinde seçili tarih kapandıysa otomatik kaydır
   useEffect(() => {
     if (!startDate) return
     const latestEarliest = format(
@@ -197,8 +198,22 @@ export default function CheckoutPage() {
     )
     if (startDate < latestEarliest) {
       setStartDate(latestEarliest)
+      return
     }
-  }, [hourBucket, minPrepDays, blockedDates, startDate])
+    if (!allowSundayStart && isSunday(parseISO(startDate))) {
+      setStartDate(format(addDays(parseISO(startDate), 1), 'yyyy-MM-dd'))
+    }
+  }, [hourBucket, minPrepDays, blockedDates, startDate, allowSundayStart])
+
+  const isSundaySelected = useMemo(() => {
+    if (!startDate) return false
+    return isSunday(parseISO(startDate))
+  }, [startDate])
+
+  const sundayDeliverySatLabel = useMemo(() => {
+    if (!isSundaySelected || !startDate) return ''
+    return format(subDays(parseISO(startDate), 1), 'd MMMM EEEE', { locale: tr })
+  }, [isSundaySelected, startDate])
 
   const deliveryPreview = useMemo(() => {
     if (!startDate || !draft) return null
@@ -265,7 +280,6 @@ export default function CheckoutPage() {
         return
       }
 
-      // Oturumu açık üyenin profilindeki mahalle/adres ve başlangıç kilosunu otomatik eşitle
       if (loggedUserId) {
         try {
           const supabase = createClient()
@@ -306,7 +320,6 @@ export default function CheckoutPage() {
             { onConflict: 'id' }
           )
 
-          // İlk siparişte girilen kiloyu gelişim grafiğine başlangıç noktası olarak ekle
           const wNum = Number(weightKg)
           if (wNum >= 30 && wNum <= 250) {
             const { count } = await supabase
@@ -361,9 +374,14 @@ export default function CheckoutPage() {
 
           <div className="bg-slate-50 rounded-2xl p-5 border border-slate-200 text-left space-y-2 text-sm">
             <div className="flex justify-between">
-              <span className="text-slate-500">İlk Teslimat Tarihi:</span>
+              <span className="text-slate-500">Paket Başlangıç Tarihi:</span>
               <span className="font-bold text-slate-900">{startDate}</span>
             </div>
+            {isSundaySelected && (
+              <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                Pazar gününün ilk paketi <strong>{sundayDeliverySatLabel}</strong> sabahı teslim edilecektir.
+              </div>
+            )}
             <div className="flex justify-between">
               <span className="text-slate-500">Son Teslimat (Bitiş) Tarihi:</span>
               <span className="font-bold text-emerald-700">{completedOrder.estimatedEndDate}</span>
@@ -439,7 +457,7 @@ export default function CheckoutPage() {
                   Paket Başlangıç Tarihi ve Teslimat Günleri
                 </h2>
                 <span className="text-xs bg-amber-50 text-amber-800 border border-amber-200 px-2.5 py-1 rounded-md font-medium">
-                  12:00&apos;ye Kadar Ertesi Gün Başlangıç
+                  Hafta İçi 12:00&apos;ye Kadar Ertesi Gün Başlangıç
                 </span>
               </div>
 
@@ -507,7 +525,7 @@ export default function CheckoutPage() {
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-2">
-                  İlk Paket Teslim Tarihinizi Seçin <span className="text-red-500">*</span>
+                  Paket Başlangıç Tarihinizi Seçin <span className="text-red-500">*</span>
                 </label>
                 <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
                   {calendarDays.map((item) => {
@@ -524,6 +542,8 @@ export default function CheckoutPage() {
                             ? 'bg-slate-100 border-slate-200 text-slate-400 opacity-60 cursor-not-allowed line-through'
                             : isSelected
                             ? 'bg-emerald-600 border-emerald-600 text-white shadow-md font-bold cursor-pointer'
+                            : item.isSun
+                            ? 'bg-amber-50/60 border-amber-300 hover:border-emerald-500 text-slate-800 cursor-pointer'
                             : 'bg-white border-slate-200 hover:border-emerald-500 text-slate-800 cursor-pointer'
                         }`}
                       >
@@ -535,6 +555,19 @@ export default function CheckoutPage() {
                   })}
                 </div>
               </div>
+
+              {/* PAZAR BAŞLANGIÇ SEÇİLDİĞİNDE CUMARTESİ TESLİMAT UYARISI */}
+              {isSundaySelected && (
+                <div className="bg-amber-50 border border-amber-300 rounded-xl p-3.5 flex items-start gap-2.5 text-xs text-amber-950">
+                  <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                  <p className="leading-relaxed">
+                    <strong>Önemli Teslimat Bilgisi:</strong> Pazar günleri kurye dağıtımı yapılmadığı
+                    için, Pazar başlangıçlı paketinizin ilk günü{' '}
+                    <strong className="underline">{sundayDeliverySatLabel} sabahı</strong> adresinize
+                    teslim edilecektir.
+                  </p>
+                </div>
+              )}
 
               <div className="pt-2">
                 <label className="block text-sm font-bold text-slate-800 mb-1.5">
@@ -775,6 +808,17 @@ export default function CheckoutPage() {
                     {formatTRY(draft.priceBreakdown.packageSubtotal)}
                   </span>
                 </div>
+
+                {draft.priceBreakdown.customizationTotal !== undefined &&
+                  draft.priceBreakdown.customizationTotal !== 0 && (
+                    <div className="flex justify-between text-xs text-slate-600 pt-2 border-t border-slate-100">
+                      <span>Paket Özelleştirme (Laktozsuz / Öğün Tercihi):</span>
+                      <span className="font-semibold text-slate-900">
+                        {draft.priceBreakdown.customizationTotal > 0 ? '+' : ''}
+                        {formatTRY(draft.priceBreakdown.customizationTotal)}
+                      </span>
+                    </div>
+                  )}
 
                 <div className="flex justify-between text-xs text-slate-600 pt-2 border-t border-slate-100">
                   <span>

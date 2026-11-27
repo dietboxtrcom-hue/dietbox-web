@@ -47,8 +47,10 @@ export function getIstanbulNow(now: Date = new Date()): {
 
 /**
  * Türkiye (Europe/Istanbul) saatine göre müşterinin seçebileceği ilk geçerli başlangıç tarihini döner:
- * - Pazartesi - Cuma 12:00'ye kadar: Ertesi gün (+1 gün)
- * - Pazartesi - Cuma 12:00 ve sonrası: +2 gün (Cuma 12:00 sonrası Pazartesi'ye kayar)
+ * - Pazartesi - Perşembe 12:00'ye kadar: Ertesi gün (+1 gün)
+ * - Pazartesi - Perşembe 12:00 ve sonrası: +2 gün
+ * - Cuma 12:00'ye kadar: Cumartesi (+1 gün) -> Bu haftanın Pazar günü de seçilebilir!
+ * - Cuma 12:00 ve sonrası: Pazartesi (+3 gün) -> Cumartesi mutfağı kapandığı için bu haftanın Pazar günü de kapanır.
  * - Cumartesi 12:00'ye kadar: Pazartesi (+2 gün)
  * - Cumartesi 12:00 ve sonrası: Salı (+3 gün)
  * - Pazar (tüm gün): Salı (+2 gün)
@@ -74,6 +76,7 @@ export function getEarliestStartDate(
 
   let candidate = addDays(istanbulDayStart, daysToAdd)
 
+  // Cuma 12:00 sonrası candidate Pazar'a denk gelirse Pazartesi'ye kaydır (Cumartesi mutfağı kapandığı için)
   while (isSunday(candidate) || blockedSet.has(format(candidate, 'yyyy-MM-dd'))) {
     candidate = addDays(candidate, 1)
   }
@@ -106,7 +109,6 @@ export function getDeliveryCountdownInfo(
 
   const earliestDateLabel = format(earliest, 'd MMMM EEEE', { locale: tr })
 
-  // 12:00'ye kalan süre
   const totalSecondsLeft = Math.max(0, 12 * 3600 - (hour * 3600 + minute * 60 + second))
   const h = Math.floor(totalSecondsLeft / 3600)
   const m = Math.floor((totalSecondsLeft % 3600) / 60)
@@ -114,15 +116,19 @@ export function getDeliveryCountdownInfo(
   const pad = (n: number) => String(n).padStart(2, '0')
   const remainingFormatted = `${pad(h)} sa ${pad(m)} dk ${pad(s)} sn`
 
-  // 12:00 geçince açılacak sonraki gün
-  const afterNoonSample = new Date(now.getTime())
   const nextEarliest = getEarliestStartDate(
     minPrepDays,
     blockedDates,
-    new Date(istanbulDayStart.getFullYear(), istanbulDayStart.getMonth(), istanbulDayStart.getDate(), 13, 0, 0)
+    new Date(
+      istanbulDayStart.getFullYear(),
+      istanbulDayStart.getMonth(),
+      istanbulDayStart.getDate(),
+      13,
+      0,
+      0
+    )
   )
   const nextDayLabel = format(nextEarliest, 'd MMMM EEEE', { locale: tr })
-  void afterNoonSample
 
   return {
     isBeforeCutoff,
@@ -151,7 +157,6 @@ export function getFreezeEligibility(
   const deadlineDay = subDays(targetDay, 1)
   const deadlineText = `${format(deadlineDay, 'dd.MM.yyyy')} saat 12:00`
 
-  // Geçmiş veya bugünün teslimatı
   if (targetDay <= istanbulDayStart) {
     return {
       canFreeze: false,
@@ -160,7 +165,6 @@ export function getFreezeEligibility(
     }
   }
 
-  // Yarınki teslimat ve saat 12:00'yi geçtiyse
   const isDeadlineToday =
     format(deadlineDay, 'yyyy-MM-dd') === format(istanbulDayStart, 'yyyy-MM-dd')
   if (isDeadlineToday && hour >= 12) {
@@ -182,18 +186,31 @@ export function isDateSelectableForStart(
   date: Date,
   minPrepDays: number = 2,
   blockedDates: string[] = [],
-  now: Date = new Date()
+  now: Date = new Date(),
+  scheduleType: DeliveryScheduleType = 'every_day_sat_double'
 ): boolean {
   const earliest = getEarliestStartDate(minPrepDays, blockedDates, now)
   const target = startOfDay(date)
 
   if (target < earliest) return false
-  if (isSunday(target)) return false
   if (blockedDates.includes(format(target, 'yyyy-MM-dd'))) return false
+
+  if (isSunday(target)) {
+    // Pazar başlangıç sadece "Her Gün" paketinde geçerlidir ve teslimatı bir önceki Cumartesi sabahı yapılır
+    if (scheduleType !== 'every_day_sat_double') return false
+    const prevSatStr = format(subDays(target, 1), 'yyyy-MM-dd')
+    if (blockedDates.includes(prevSatStr)) return false
+  }
 
   return true
 }
 
+/**
+ * Seçilen Başlangıç Tarihi, Paket Gün Sayısı ve Teslimat Kuralına göre
+ * tüm teslimat takvimini ve kesin Paket Bitiş Tarihini hesaplar.
+ * - Eğer müşteri "Her Gün" paketinde Pazar gününü başlangıç seçerse,
+ *   ilk günün 1 paketi bir önceki Cumartesi sabahı sevkiyatına yazılır.
+ */
 export function generateDeliverySchedule(
   startDateStr: string,
   totalPackageDays: number,
@@ -209,6 +226,23 @@ export function generateDeliverySchedule(
   let remainingPackages = totalPackageDays
   let currentDate = parseISO(startDateStr)
   let safetyCounter = 0
+
+  // Özel Kural: Pazar başlangıçlı "Her Gün" paketinde ilk gün paketi Cumartesi sabahı teslim edilir
+  if (
+    isSunday(currentDate) &&
+    scheduleType === 'every_day_sat_double' &&
+    remainingPackages > 0
+  ) {
+    const prevSatStr = format(subDays(currentDate, 1), 'yyyy-MM-dd')
+    if (!holidaySet.has(prevSatStr)) {
+      deliveries.push({
+        delivery_date: prevSatStr,
+        package_quantity: 1,
+      })
+      remainingPackages -= 1
+    }
+    currentDate = addDays(currentDate, 1) // Pazartesi'den normal akışa devam et
+  }
 
   while (remainingPackages > 0 && safetyCounter < 365) {
     safetyCounter++
