@@ -3,11 +3,15 @@
 
 import { useEffect, useState, useMemo } from 'react'
 import Link from 'next/link'
-import { addDays, format, isSunday, startOfDay } from 'date-fns'
+import { addDays, format, isSunday } from 'date-fns'
 import { tr } from 'date-fns/locale'
 import { createClient } from '@/lib/supabase/client'
 import { formatTRY } from '@/lib/pricing-engine'
-import { getEarliestStartDate, generateDeliverySchedule } from '@/lib/calendar-engine'
+import {
+  getIstanbulNow,
+  getEarliestStartDate,
+  generateDeliverySchedule,
+} from '@/lib/calendar-engine'
 import { DeliveryScheduleType } from '@/types/database'
 import {
   Calendar,
@@ -134,12 +138,12 @@ export default function CheckoutPage() {
 
   const calendarDays = useMemo(() => {
     const now = new Date()
-    const today = startOfDay(now)
+    const { istanbulDayStart } = getIstanbulNow(now)
     const earliest = getEarliestStartDate(minPrepDays, blockedDates, now)
     const days = []
 
     for (let i = 0; i < 18; i++) {
-      const d = addDays(today, i)
+      const d = addDays(istanbulDayStart, i)
       const dateStr = format(d, 'yyyy-MM-dd')
       const isPrepLocked = d < earliest
       const isSun = isSunday(d)
@@ -384,13 +388,13 @@ export default function CheckoutPage() {
           <div className="lg:col-span-7 space-y-6">
             {/* 1. PAKET BAŞLANGIÇ TARİHİ */}
             <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-4">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <h2 className="text-lg font-extrabold text-slate-900 flex items-center gap-2">
                   <Calendar className="w-5 h-5 text-emerald-600" />
                   Paket Başlangıç Tarihi ve Teslimat Günleri
                 </h2>
                 <span className="text-xs bg-amber-50 text-amber-800 border border-amber-200 px-2.5 py-1 rounded-md font-medium">
-                  İlk {minPrepDays} Gün Hazırlık İçin Kapalıdır
+                  12:00&apos;ye Kadar Ertesi Gün Başlangıç
                 </span>
               </div>
 

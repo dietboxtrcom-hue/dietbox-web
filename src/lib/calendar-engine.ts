@@ -8,13 +8,41 @@ export interface ScheduledDeliveryDay {
 }
 
 /**
- * Sipariş anından itibaren ilk X hazırlık gününü (varsayılan 2 gün) kapatarak
- * müşterinin seçebileceği ilk geçerli başlangıç tarihini döner.
- * - Hafta içi (Pzt-Per): +2 gün
- * - Cuma: +2 gün Pazar'a denk geldiği için Pazartesi
+ * Kullanıcının cihaz saat diliminden bağımsız olarak
+ * Türkiye (Europe/Istanbul) tarihini (gün başlangıcı) ve saatini döner.
+ */
+export function getIstanbulNow(now: Date = new Date()): {
+  istanbulDayStart: Date
+  hour: number
+} {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Europe/Istanbul',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    hour12: false,
+  }).formatToParts(now)
+
+  const get = (type: string) => Number(parts.find((p) => p.type === type)?.value || 0)
+  const year = get('year')
+  const month = get('month')
+  const day = get('day')
+  const hour = get('hour') % 24
+
+  return {
+    istanbulDayStart: new Date(year, month - 1, day),
+    hour,
+  }
+}
+
+/**
+ * Türkiye (Europe/Istanbul) saatine göre müşterinin seçebileceği ilk geçerli başlangıç tarihini döner:
+ * - Pazartesi - Cuma 12:00'ye kadar: Ertesi gün (+1 gün)
+ * - Pazartesi - Cuma 12:00 ve sonrası: +2 gün (Cuma 12:00 sonrası Pazar'a denk gelip Pazartesi'ye kayar)
  * - Cumartesi 12:00'ye kadar: Pazartesi (+2 gün)
  * - Cumartesi 12:00 ve sonrası: Salı (+3 gün)
- * - Pazar: Salı (+2 gün)
+ * - Pazar (tüm gün): Salı (+2 gün)
  */
 export function getEarliestStartDate(
   minPrepDays: number = 2,
@@ -22,10 +50,23 @@ export function getEarliestStartDate(
   now: Date = new Date()
 ): Date {
   const blockedSet = new Set(blockedDates)
-  const isSatAfterNoon = isSaturday(now) && now.getHours() >= 12
-  const daysToAdd = isSatAfterNoon ? minPrepDays + 1 : minPrepDays
+  const { istanbulDayStart, hour } = getIstanbulNow(now)
+  const isAfterNoon = hour >= 12
 
-  let candidate = addDays(startOfDay(now), daysToAdd)
+  let daysToAdd = minPrepDays
+
+  if (isSunday(istanbulDayStart)) {
+    // Pazar tüm gün -> Salı (+2 gün)
+    daysToAdd = minPrepDays
+  } else if (isSaturday(istanbulDayStart)) {
+    // Cumartesi 12:00'ye kadar -> Pazartesi (+2), 12:00 sonrası -> Salı (+3)
+    daysToAdd = isAfterNoon ? minPrepDays + 1 : minPrepDays
+  } else {
+    // Pazartesi - Cuma: 12:00'ye kadar -> Ertesi gün (+1), 12:00 sonrası -> +2 gün
+    daysToAdd = isAfterNoon ? minPrepDays : 1
+  }
+
+  let candidate = addDays(istanbulDayStart, daysToAdd)
 
   // İlk uygun gün Pazar ise veya kapalı/tatil günüyse bir sonraki güne kaydır
   while (isSunday(candidate) || blockedSet.has(format(candidate, 'yyyy-MM-dd'))) {
