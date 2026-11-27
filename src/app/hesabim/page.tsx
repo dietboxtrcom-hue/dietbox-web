@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation'
 import { format, isAfter, parseISO, startOfDay } from 'date-fns'
 import { createClient } from '@/lib/supabase/client'
 import { formatTRY } from '@/lib/pricing-engine'
+import { getFreezeEligibility } from '@/lib/calendar-engine'
 import SiteHeader from '@/components/SiteHeader'
 import SiteFooter from '@/components/SiteFooter'
 import WeightProgressTracker from '@/components/WeightProgressTracker'
@@ -24,6 +25,7 @@ import {
   Activity,
   FileText,
   ArrowRight,
+  Clock,
 } from 'lucide-react'
 
 export default function CustomerAccountPage() {
@@ -122,7 +124,6 @@ export default function CustomerAccountPage() {
           .eq('id', u.id)
           .single()
 
-        // Metin olarak kayıtlı ilçe/mahalle varsa ID'leri otomatik eşleştir
         const matchedCity =
           loadedCities.find((c) => c.id === prof?.city_id) ||
           loadedCities.find((c) => c.name?.toLowerCase() === (prof?.city || 'istanbul').toLowerCase()) ||
@@ -190,7 +191,6 @@ export default function CustomerAccountPage() {
     return neighborhoods.filter((n) => Number(n.district_id) === Number(profile.district_id))
   }, [neighborhoods, profile.district_id])
 
-  // Detaylı VKİ (Vücut Kitle Endeksi), BMR, İdeal Kilo ve Günlük Kalori Hesabı
   const healthMetrics = useMemo(() => {
     const h = Number(profile.height_cm)
     const w = Number(profile.weight_kg)
@@ -288,6 +288,12 @@ export default function CustomerAccountPage() {
   }
 
   const handleFreezeDelivery = async (deliveryId: string, orderId: string, dateStr: string) => {
+    const check = getFreezeEligibility(dateStr)
+    if (!check.canFreeze) {
+      alert(check.reason)
+      return
+    }
+
     if (!confirm(`${dateStr} tarihli teslimatı dondurup paket sonuna +1 gün eklemek istiyor musunuz?`))
       return
     setFreezingId(deliveryId)
@@ -471,7 +477,6 @@ export default function CustomerAccountPage() {
                       />
                     </div>
 
-                    {/* İl Seçimi (Birden fazla aktif il varsa göster) */}
                     {cities.length > 1 && (
                       <div className="sm:col-span-2">
                         <label className="block text-xs font-bold text-slate-600 mb-1">İl</label>
@@ -798,6 +803,16 @@ export default function CustomerAccountPage() {
               </button>
             </form>
 
+            {/* Dondurma Kuralı Bilgi Bandı */}
+            <div className="bg-blue-50/80 border border-blue-200 rounded-2xl px-4 py-3 text-xs text-blue-950 flex items-center gap-2.5">
+              <Clock className="w-4 h-4 text-blue-600 shrink-0" />
+              <span>
+                <strong>Gün Dondurma Kuralı:</strong> Teslimat gününden en geç{' '}
+                <strong>1 gün önce saat 12:00&apos;ye kadar</strong> tek tıkla gününüzü dondurabilirsiniz.
+                12:00 sonrasında ertesi günün mutfak hazırlığı başladığı için ilgili gün kilitlenir.
+              </span>
+            </div>
+
             {orders.length === 0 ? (
               <div className="bg-white rounded-3xl p-10 border border-slate-200 text-center space-y-3">
                 <Package className="w-10 h-10 text-slate-300 mx-auto" />
@@ -856,9 +871,13 @@ export default function CustomerAccountPage() {
 
                     <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-2.5">
                       {deliveries.map((del) => {
-                        const canFreeze =
-                          del.status === 'scheduled' &&
+                        const freezeCheck = getFreezeEligibility(del.delivery_date)
+                        const isScheduled = del.status === 'scheduled'
+                        const isFutureButLocked =
+                          isScheduled &&
+                          !freezeCheck.canFreeze &&
                           isAfter(parseISO(del.delivery_date), today)
+
                         return (
                           <div
                             key={del.id}
@@ -867,6 +886,8 @@ export default function CustomerAccountPage() {
                                 ? 'bg-blue-50 border-blue-200 text-blue-800'
                                 : del.status === 'delivered'
                                 ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                                : isFutureButLocked
+                                ? 'bg-amber-50/70 border-amber-200 text-amber-900'
                                 : 'bg-white border-slate-200'
                             }`}
                           >
@@ -878,26 +899,41 @@ export default function CustomerAccountPage() {
                                 {del.package_quantity} Paket
                               </span>
                             </div>
+
                             {del.status === 'frozen' && (
                               <span className="text-[10px] font-bold text-blue-700 flex items-center gap-1">
                                 <Snowflake className="w-3 h-3" /> Donduruldu
                               </span>
                             )}
+
                             {del.status === 'delivered' && (
                               <span className="text-[10px] font-bold text-emerald-700 flex items-center gap-1">
                                 <CheckCircle2 className="w-3 h-3" /> Teslim Edildi
                               </span>
                             )}
-                            {canFreeze && (
+
+                            {isScheduled && freezeCheck.canFreeze && (
                               <button
                                 type="button"
                                 disabled={freezingId === del.id}
+                                title={freezeCheck.reason}
                                 onClick={() =>
                                   handleFreezeDelivery(del.id, order.id, del.delivery_date)
                                 }
-                                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-1.5 rounded-lg text-[11px] cursor-pointer"
+                                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-1.5 rounded-lg text-[11px] cursor-pointer transition"
                               >
                                 {freezingId === del.id ? '...' : 'Günü Dondur'}
+                              </button>
+                            )}
+
+                            {isFutureButLocked && (
+                              <button
+                                type="button"
+                                onClick={() => alert(freezeCheck.reason)}
+                                title={freezeCheck.reason}
+                                className="w-full bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold py-1.5 px-2 rounded-lg text-[10px] cursor-pointer transition"
+                              >
+                                Süre Doldu (12:00)
                               </button>
                             )}
                           </div>

@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import GoogleReviewsSection from '@/components/GoogleReviewsSection'
+import SupplierMarquee from '@/components/SupplierMarquee'
 import FloatingSocialBar, {
   getActiveSocialLinks,
   SocialPlatformIcon,
@@ -18,18 +19,7 @@ import {
   ShieldCheck,
   ChevronRight,
   Send,
-  Award,
 } from 'lucide-react'
-
-const SUPPLIERS = [
-  { name: 'alpro', sub: 'Bitkisel Süt Ürünleri', accent: 'border-blue-200 text-blue-800' },
-  { name: 'Sinangil', sub: 'Tam Tahıl & Glutensiz', accent: 'border-red-200 text-red-700' },
-  { name: 'MARMARABİRLİK', sub: 'Doğal Zeytin & Zeytinyağı', accent: 'border-emerald-200 text-emerald-800' },
-  { name: 'ÖNCÜ', sub: 'Doğal Yöresel Ürünler', accent: 'border-amber-200 text-amber-800' },
-  { name: 'ALTINKILIÇ', sub: 'Kefir & Doğal Süt Ürünleri', accent: 'border-rose-200 text-rose-700' },
-  { name: 'Barilla', sub: 'Tam Buğday & Protein Makarna', accent: 'border-indigo-200 text-indigo-800' },
-  { name: 'doğadan', sub: 'Fonksiyonel Bitki Çayları', accent: 'border-green-200 text-green-800' },
-]
 
 export default function SiteFooter({ generalSettings }: { generalSettings?: any }) {
   const [newsletterEmail, setNewsletterEmail] = useState('')
@@ -58,42 +48,13 @@ export default function SiteFooter({ generalSettings }: { generalSettings?: any 
     pathname === '/paketler' ||
     pathname === '/iletisim'
 
-  const scrollingSuppliers = [...SUPPLIERS, ...SUPPLIERS]
-
   return (
     <div className="mt-20">
       {/* 0. GOOGLE MÜŞTERİ YORUMLARI */}
       {showGoogleReviews && <GoogleReviewsSection generalSettings={generalSettings} />}
 
-      {/* 1. SONSUZ KAYAN (MARQUEE) TEDARİKÇİLERİMİZ BANDI */}
-      <section className="bg-white border-y border-slate-200/90 py-12 overflow-hidden">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 mb-8 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
-          <div>
-            <div className="inline-flex items-center gap-1.5 text-xs font-extrabold uppercase tracking-wider text-[#51a885] mb-1">
-              <Award className="w-4 h-4 text-[#eab130]" />
-              1. Sınıf Mutfak Kalitesi
-            </div>
-            <h3 className="text-2xl sm:text-3xl font-black text-slate-900">Tedarikçilerimiz</h3>
-            <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-              Sizlere en kaliteli yemekleri sunabilmek için Türkiye&apos;nin en güvenilir markalarıyla çalışıyoruz.
-            </p>
-          </div>
-        </div>
-
-        <div className="relative w-full overflow-hidden">
-          <div className="animate-marquee gap-5 px-4">
-            {scrollingSuppliers.map((s, idx) => (
-              <div
-                key={idx}
-                className={`w-56 shrink-0 bg-slate-50/80 hover:bg-white p-6 rounded-2xl border ${s.accent} shadow-2xs hover:shadow-md transition flex flex-col items-center justify-center text-center`}
-              >
-                <span className="font-black text-xl tracking-tight">{s.name}</span>
-                <span className="text-[11px] text-slate-500 font-semibold mt-1">{s.sub}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
+      {/* 1. GERÇEK LOGOLU KAYAN TEDARİKÇİLERİMİZ BANDI */}
+      {pathname !== '/tedarikcilerimiz' && <SupplierMarquee />}
 
       {/* 2. HABER BÜLTENİ ABONELİK ŞERİDİ */}
       <section className="bg-gradient-to-r from-[#51a885] to-[#3b8265] text-white py-10 px-4">
@@ -191,7 +152,12 @@ export default function SiteFooter({ generalSettings }: { generalSettings?: any 
               </li>
               <li className="pt-2.5">
                 <Link href="/kurumsal/misyon-vizyon" className="hover:text-[#eab130] flex items-center gap-1.5 transition">
-                  <ChevronRight className="w-3.5 h-3.5 text-[#51a885]" /> Misyon & Vizyon
+                  <ChevronRight className="w-3.5 h-3.5 text-[#51a885]" /> Misyon &amp; Vizyon
+                </Link>
+              </li>
+              <li className="pt-2.5">
+                <Link href="/tedarikcilerimiz" className="hover:text-[#eab130] flex items-center gap-1.5 transition">
+                  <ChevronRight className="w-3.5 h-3.5 text-[#51a885]" /> Tedarikçilerimiz
                 </Link>
               </li>
               <li className="pt-2.5">
@@ -215,7 +181,7 @@ export default function SiteFooter({ generalSettings }: { generalSettings?: any 
           {/* Sütun 3: Yasal & Sözleşmeler */}
           <div className="lg:col-span-3 space-y-4">
             <h4 className="text-white font-black text-sm uppercase tracking-wider border-l-4 border-[#51a885] pl-3">
-              YASAL & SÖZLEŞMELER
+              YASAL &amp; SÖZLEŞMELER
             </h4>
             <ul className="space-y-2.5 text-xs divide-y divide-white/10">
               <li className="pt-2.5 first:pt-0">
@@ -247,7 +213,7 @@ export default function SiteFooter({ generalSettings }: { generalSettings?: any 
                   href="/kurumsal/iptal-ve-iade-kosullari"
                   className="hover:text-[#eab130] flex items-center gap-1.5 transition"
                 >
-                  <ChevronRight className="w-3.5 h-3.5 text-[#51a885]" /> İptal, İade & Gün Dondurma
+                  <ChevronRight className="w-3.5 h-3.5 text-[#51a885]" /> İptal, İade &amp; Gün Dondurma
                 </Link>
               </li>
               <li className="pt-2.5">
@@ -255,7 +221,7 @@ export default function SiteFooter({ generalSettings }: { generalSettings?: any 
                   href="/hesabim"
                   className="hover:text-[#eab130] flex items-center gap-1.5 transition"
                 >
-                  <ChevronRight className="w-3.5 h-3.5 text-[#51a885]" /> Paket Takibi & Hesabım
+                  <ChevronRight className="w-3.5 h-3.5 text-[#51a885]" /> Paket Takibi &amp; Hesabım
                 </Link>
               </li>
             </ul>
@@ -272,7 +238,7 @@ export default function SiteFooter({ generalSettings }: { generalSettings?: any 
                   href="/paketler/zayiflama-ve-dengeli-beslenme-paketi"
                   className="hover:text-[#eab130] flex items-center gap-1.5 transition"
                 >
-                  <ChevronRight className="w-3.5 h-3.5 text-[#51a885]" /> Zayıflama & Dengeli
+                  <ChevronRight className="w-3.5 h-3.5 text-[#51a885]" /> Zayıflama &amp; Dengeli
                 </Link>
               </li>
               <li className="pt-2.5">
@@ -349,7 +315,7 @@ export default function SiteFooter({ generalSettings }: { generalSettings?: any 
               </div>
               <div className="inline-flex items-center gap-1.5 text-xs text-[#51a885] font-bold pt-1">
                 <ShieldCheck className="w-4 h-4 text-[#eab130]" />
-                256Bit SSL & 3D Secure
+                256Bit SSL &amp; 3D Secure
               </div>
             </div>
           </div>

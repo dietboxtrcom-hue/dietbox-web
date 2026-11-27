@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
 import { sendFreezeEmails } from '@/lib/mailer'
+import { getFreezeEligibility } from '@/lib/calendar-engine'
 import { addDays, format, isSunday, isSaturday, parseISO } from 'date-fns'
 
 function getNextValidDeliveryDate(
@@ -317,7 +318,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true })
     }
 
-    // 9. PAKET DONDURMA / TESLİMAT ERTELEME (Çift Taraflı Mail Destekli)
+    // 9. PAKET DONDURMA / TESLİMAT ERTELEME (Sunucu Taraflı 12:00 & Geçmiş Tarih Kilidi + Mail)
     if (action === 'freeze_delivery_day') {
       const { deliveryId, orderId } = payload
       const { data: targetDelivery } = await supabase
@@ -328,6 +329,12 @@ export async function POST(request: Request) {
 
       if (!targetDelivery || targetDelivery.status !== 'scheduled') {
         throw new Error('Sadece bekleyen teslimat günleri dondurulabilir.')
+      }
+
+      // İstanbul saatine göre geçmiş günler ve 12:00 sınırı herkes için zorunlu
+      const freezeCheck = getFreezeEligibility(targetDelivery.delivery_date, new Date())
+      if (!freezeCheck.canFreeze) {
+        return NextResponse.json({ error: freezeCheck.reason }, { status: 400 })
       }
 
       const { data: order } = await supabase.from('orders').select('*').eq('id', orderId).single()
@@ -445,7 +452,8 @@ export async function POST(request: Request) {
         .eq('id', deliveryId)
       return NextResponse.json({ success: true })
     }
-// 11. KURUMSAL SAYFA EKLEME / DÜZENLEME / SİLME
+
+    // 11. KURUMSAL SAYFA EKLEME / DÜZENLEME / SİLME
     if (action === 'save_corporate_page') {
       const { id, slug, title, subtitle, content, sort_order, is_active } = payload
       const rec = {
@@ -472,6 +480,7 @@ export async function POST(request: Request) {
       if (error) throw error
       return NextResponse.json({ success: true })
     }
+
     // 12. SIKÇA SORULAN SORULAR (FAQ) EKLEME / GÜNCELLEME / SİLME
     if (action === 'save_faq') {
       const { id, category, question, answer, sort_order, is_active } = payload
@@ -497,6 +506,7 @@ export async function POST(request: Request) {
       if (error) throw error
       return NextResponse.json({ success: true })
     }
+
     return NextResponse.json({ error: 'Geçersiz işlem' }, { status: 400 })
   } catch (err: any) {
     return NextResponse.json({ error: err?.message || 'Sunucu hatası' }, { status: 500 })

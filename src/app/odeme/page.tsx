@@ -10,6 +10,7 @@ import { formatTRY } from '@/lib/pricing-engine'
 import {
   getIstanbulNow,
   getEarliestStartDate,
+  getDeliveryCountdownInfo,
   generateDeliverySchedule,
 } from '@/lib/calendar-engine'
 import { DeliveryScheduleType } from '@/types/database'
@@ -17,6 +18,7 @@ import {
   Calendar,
   CheckCircle2,
   CreditCard,
+  Clock,
   Landmark,
   ShieldCheck,
   ArrowLeft,
@@ -31,6 +33,10 @@ export default function CheckoutPage() {
   const [minPrepDays, setMinPrepDays] = useState<number>(2)
   const [loggedUserId, setLoggedUserId] = useState<string | null>(null)
   const [autoFilled, setAutoFilled] = useState(false)
+
+  // Canlı Saat & Geri Sayım State (Hydration güvenli)
+  const [mounted, setMounted] = useState(false)
+  const [nowTick, setNowTick] = useState<Date>(() => new Date())
 
   // Form State
   const [firstName, setFirstName] = useState('')
@@ -63,6 +69,12 @@ export default function CheckoutPage() {
     estimatedEndDate: string
     totalDeliveryDays: number
   } | null>(null)
+
+  useEffect(() => {
+    setMounted(true)
+    const timer = setInterval(() => setNowTick(new Date()), 1000)
+    return () => clearInterval(timer)
+  }, [])
 
   useEffect(() => {
     const saved = sessionStorage.getItem('dietbox_checkout_draft')
@@ -136,6 +148,14 @@ export default function CheckoutPage() {
     fetchInitialData()
   }, [])
 
+  const countdown = useMemo(
+    () => getDeliveryCountdownInfo(minPrepDays, blockedDates, nowTick),
+    [minPrepDays, blockedDates, nowTick]
+  )
+
+  // Saat değiştiğinde (ör. 11:59 -> 12:00 geçişinde) takvim kutularını otomatik yenile
+  const hourBucket = format(nowTick, 'yyyy-MM-dd-HH')
+
   const calendarDays = useMemo(() => {
     const now = new Date()
     const { istanbulDayStart } = getIstanbulNow(now)
@@ -166,7 +186,19 @@ export default function CheckoutPage() {
       })
     }
     return days
-  }, [minPrepDays, blockedDates])
+  }, [minPrepDays, blockedDates, hourBucket])
+
+  // Eğer kullanıcı sayfadayken saat 12:00'yi geçerse seçili tarih kilitlenirse otomatik güncelle
+  useEffect(() => {
+    if (!startDate) return
+    const latestEarliest = format(
+      getEarliestStartDate(minPrepDays, blockedDates, new Date()),
+      'yyyy-MM-dd'
+    )
+    if (startDate < latestEarliest) {
+      setStartDate(latestEarliest)
+    }
+  }, [hourBucket, minPrepDays, blockedDates, startDate])
 
   const deliveryPreview = useMemo(() => {
     if (!startDate || !draft) return null
@@ -176,6 +208,19 @@ export default function CheckoutPage() {
   const handleSubmitOrder = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!draft || !startDate) return
+
+    // Son saniye 12:00 kesim saati güvenlik kontrolü
+    const latestEarliest = format(
+      getEarliestStartDate(minPrepDays, blockedDates, new Date()),
+      'yyyy-MM-dd'
+    )
+    if (startDate < latestEarliest) {
+      setStartDate(latestEarliest)
+      alert(
+        `Saat 12:00 kesim saati geçtiği için ilk teslimat tarihiniz otomatik olarak ${latestEarliest} olarak güncellendi. Lütfen kontrol edip tekrar onaylayın.`
+      )
+      return
+    }
 
     setSubmitting(true)
     try {
@@ -397,6 +442,68 @@ export default function CheckoutPage() {
                   12:00&apos;ye Kadar Ertesi Gün Başlangıç
                 </span>
               </div>
+
+              {/* CANLI SEVKİYAT GERİ SAYIM BANNERI */}
+              {mounted && (
+                <div
+                  className={`rounded-2xl p-4 border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+                    countdown.isBeforeCutoff
+                      ? 'bg-[#0d1f18] text-white border-emerald-700/60 shadow-md'
+                      : 'bg-amber-50 text-amber-950 border-amber-200'
+                  }`}
+                >
+                  <div className="flex items-start gap-3">
+                    <div
+                      className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                        countdown.isBeforeCutoff
+                          ? 'bg-[#eab130] text-slate-950'
+                          : 'bg-amber-200/80 text-amber-900'
+                      }`}
+                    >
+                      <Clock className="w-5 h-5" />
+                    </div>
+                    <div className="space-y-0.5 text-xs">
+                      {countdown.isBeforeCutoff ? (
+                        <>
+                          <p className="font-extrabold text-sm">
+                            {countdown.isTomorrow
+                              ? 'Yarın Sabah Kapınızda!'
+                              : `En Erken Başlangıç: ${countdown.earliestDateLabel}`}
+                          </p>
+                          <p className="text-white/80 leading-relaxed">
+                            Saat 12:00&apos;ye kadar siparişinizi tamamlarsanız ilk teslimatınız{' '}
+                            <strong className="text-[#eab130]">{countdown.earliestDateLabel}</strong>{' '}
+                            sabahı başlar. 12:00 sonrası siparişlerde ilk teslimat{' '}
+                            <strong>{countdown.nextDayLabel}</strong> gününe kayar.
+                          </p>
+                        </>
+                      ) : (
+                        <>
+                          <p className="font-extrabold text-sm">
+                            İlk Açık Teslimat: {countdown.earliestDateLabel}
+                          </p>
+                          <p className="text-amber-900/80 leading-relaxed">
+                            {countdown.isSundayToday
+                              ? 'Pazar günleri mutfağımız kapalıdır. Bugün verilen siparişlerin sevkiyatı Salı sabahı başlar.'
+                              : `Bugün saat 12:00 kesim saati geçtiği için mutfak planlaması tamamlandı. Şu an vereceğiniz siparişler en erken ${countdown.earliestDateLabel} sabahı kapınızda!`}
+                          </p>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {countdown.isBeforeCutoff && (
+                    <div className="bg-white/10 border border-white/15 rounded-xl px-4 py-2 text-center shrink-0">
+                      <span className="block text-[10px] uppercase tracking-wider text-white/60 font-bold">
+                        Kalan Süre (TR Saati)
+                      </span>
+                      <strong className="font-mono text-base font-black text-[#eab130]">
+                        {countdown.remainingFormatted}
+                      </strong>
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-2">

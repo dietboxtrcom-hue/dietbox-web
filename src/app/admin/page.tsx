@@ -5,9 +5,11 @@ import { useEffect, useState, useMemo } from 'react'
 import Link from 'next/link'
 import * as XLSX from 'xlsx'
 import { format, differenceInCalendarDays, parseISO } from 'date-fns'
+import { getFreezeEligibility, getIstanbulNow } from '@/lib/calendar-engine'
 import { createClient } from '@/lib/supabase/client'
 import { formatTRY } from '@/lib/pricing-engine'
 import RichTextEditor from '@/components/RichTextEditor'
+import SuppliersManager from '@/components/admin/SuppliersManager'
 import {
   LayoutDashboard,
   Truck,
@@ -40,6 +42,7 @@ import {
   FileText,
   Activity,
   Eye,
+  Award,
 } from 'lucide-react'
 
 type AdminSection =
@@ -48,6 +51,7 @@ type AdminSection =
   | 'dispatch'
   | 'products'
   | 'sliders'
+  | 'suppliers'
   | 'orders'
   | 'customers'
   | 'logs'
@@ -188,7 +192,7 @@ export default function AdminDashboardPage() {
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null)
 
   useEffect(() => {
-    setSelectedDate(format(new Date(), 'yyyy-MM-dd'))
+    setSelectedDate(format(getIstanbulNow().istanbulDayStart, 'yyyy-MM-dd'))
     const savedSession = sessionStorage.getItem('dietbox_admin_session')
     if (savedSession) {
       setAdminUser(JSON.parse(savedSession))
@@ -251,7 +255,7 @@ export default function AdminDashboardPage() {
     setAdminUsersList(admRes.data || [])
     setContactMessages(msgRes.data || [])
     setProfiles(profRes.data || [])
-    // Logları doğrudan sunucu API'sinden çek (RLS / cache takılmasını önler)
+
     try {
       const trackRes = await fetch('/api/track', { cache: 'no-store' })
       const trackJson = await trackRes.json()
@@ -353,7 +357,6 @@ export default function AdminDashboardPage() {
       }
     })
 
-    // Henüz siparişi olmayan kayıtlı üyeleri (profiles) de müşteri listesine dahil et
     profiles.forEach((p) => {
       const key = (p.email || p.phone || p.full_name || p.id || '').toLowerCase()
       if (!key) return
@@ -502,6 +505,7 @@ export default function AdminDashboardPage() {
     { id: 'dispatch', label: 'Günlük Sevkiyat & Excel', icon: Truck, badge: dailyDispatchList.length },
     { id: 'products', label: 'Ürünler & Paket Fiyatları', icon: Package, badge: packages.length },
     { id: 'sliders', label: 'Anasayfa Slider (Resim/Video)', icon: Images, badge: sliders.length },
+    { id: 'suppliers', label: 'Tedarikçilerimiz (Logolar)', icon: Award },
     { id: 'orders', label: 'Siparişler & Dondurma', icon: ShoppingBag, badge: orders.length },
     { id: 'customers', label: 'Müşteriler & Mesajlar', icon: Users, badge: stats.customers.length },
     { id: 'logs', label: 'Aktivite & Gezinme Logları', icon: Activity, badge: activityLogs.length },
@@ -529,6 +533,8 @@ export default function AdminDashboardPage() {
       return matchDist && matchSearch
     })
   }, [neighborhoods, selectedDistrictFilter, neighSearch])
+
+  const todayIstanbulStr = format(getIstanbulNow().istanbulDayStart, 'yyyy-MM-dd')
 
   // GÜVENLİ ADMİN GİRİŞ EKRANI
   if (!adminUser) {
@@ -857,7 +863,7 @@ export default function AdminDashboardPage() {
                       <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold">
                         <th className="p-3">#</th>
                         <th className="p-3">İlçe / Mahalle</th>
-                        <th className="p-3">Müşteri & Telefon</th>
+                        <th className="p-3">Müşteri &amp; Telefon</th>
                         <th className="p-3">Diyet Paketi</th>
                         <th className="p-3">Adet</th>
                         <th className="p-3">Alerjen / Not</th>
@@ -917,7 +923,7 @@ export default function AdminDashboardPage() {
               <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm flex flex-wrap items-center justify-between gap-4">
                 <div>
                   <h2 className="text-lg font-extrabold text-slate-900">
-                    Diyet & Detoks Paketleri ({packages.length} Ürün)
+                    Diyet &amp; Detoks Paketleri ({packages.length} Ürün)
                   </h2>
                   <p className="text-xs text-slate-500">
                     Her paketin gün periyotlarına göre kademeli fiyatlarını, görselini ve örnek menüsünü düzenleyebilirsiniz.
@@ -964,7 +970,7 @@ export default function AdminDashboardPage() {
 
                       <div className="bg-slate-50 p-3 rounded-xl border border-slate-200/80">
                         <span className="text-[11px] font-bold text-slate-500 block mb-1.5">
-                          Tanımlı Periyot & Paket Fiyatları:
+                          Tanımlı Periyot &amp; Paket Fiyatları:
                         </span>
                         <div className="flex flex-wrap gap-1.5">
                           {tiers.map((t: any, idx: number) => (
@@ -1115,6 +1121,33 @@ export default function AdminDashboardPage() {
             </div>
           )}
 
+          {/* 4.5 TEDARİKÇİLERİMİZ (GERÇEK LOGOLAR & FOOTER KAYAN BAR) */}
+          {activeSection === 'suppliers' && (
+            <div className="space-y-6">
+              <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm flex flex-wrap items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-lg font-extrabold text-slate-900">
+                    Tedarikçilerimiz &amp; Logo Yönetimi
+                  </h2>
+                  <p className="text-xs text-slate-500">
+                    Buradan eklediğiniz veya gizlediğiniz markalar hem footer üstü kayan barda hem de Tedarikçilerimiz sayfasında anlık güncellenir.
+                  </p>
+                </div>
+                <Link
+                  href="/tedarikcilerimiz"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="bg-slate-900 hover:bg-emerald-600 text-white text-xs font-bold px-4 py-2.5 rounded-xl inline-flex items-center gap-2 transition"
+                >
+                  Tedarikçilerimiz Sayfasını Gör
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </Link>
+              </div>
+
+              <SuppliersManager />
+            </div>
+          )}
+
           {/* 5. SİPARİŞLER & DONDURMA */}
           {activeSection === 'orders' && (
             <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-4">
@@ -1164,41 +1197,62 @@ export default function AdminDashboardPage() {
 
                       {isExpanded && (
                         <div className="pt-3 border-t border-slate-100 grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2">
-                          {orderDeliveries.map((del) => (
-                            <div
-                              key={del.id}
-                              className={`p-2.5 rounded-xl border text-xs flex flex-col justify-between ${
-                                del.status === 'frozen'
-                                  ? 'bg-blue-50 border-blue-200 text-blue-800'
-                                  : 'bg-white border-slate-200'
-                              }`}
-                            >
-                              <div>
-                                <span className="font-bold block">{del.delivery_date}</span>
-                                <span className="text-[11px] opacity-80">
-                                  {del.package_quantity} Paket • {del.status}
-                                </span>
+                          {orderDeliveries.map((del) => {
+                            const freezeCheck = getFreezeEligibility(del.delivery_date)
+                            const isPast = del.delivery_date <= todayIstanbulStr
+
+                            return (
+                              <div
+                                key={del.id}
+                                className={`p-2.5 rounded-xl border text-xs flex flex-col justify-between ${
+                                  del.status === 'frozen'
+                                    ? 'bg-blue-50 border-blue-200 text-blue-800'
+                                    : del.status === 'delivered'
+                                    ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                                    : isPast
+                                    ? 'bg-slate-100 border-slate-200 text-slate-400'
+                                    : 'bg-white border-slate-200'
+                                }`}
+                              >
+                                <div>
+                                  <span className="font-bold block">{del.delivery_date}</span>
+                                  <span className="text-[11px] opacity-80">
+                                    {del.package_quantity} Paket • {del.status}
+                                  </span>
+                                </div>
+
+                                {del.status === 'scheduled' && freezeCheck.canFreeze && (
+                                  <button
+                                    onClick={async () => {
+                                      const res = await fetch('/api/admin', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({
+                                          action: 'freeze_delivery_day',
+                                          payload: { deliveryId: del.id, orderId: order.id },
+                                        }),
+                                      })
+                                      const data = await res.json()
+                                      if (res.ok) fetchAllData()
+                                      else alert(data.error || 'İşlem yapılamadı.')
+                                    }}
+                                    className="mt-2 w-full bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold py-1 rounded cursor-pointer"
+                                  >
+                                    Dondur
+                                  </button>
+                                )}
+
+                                {del.status === 'scheduled' && !freezeCheck.canFreeze && (
+                                  <span
+                                    title={freezeCheck.reason}
+                                    className="mt-2 block text-center bg-slate-200/80 text-slate-600 text-[10px] font-bold py-1 px-1.5 rounded"
+                                  >
+                                    {isPast ? 'Tarihi Geçti' : 'Süre Doldu (12:00)'}
+                                  </span>
+                                )}
                               </div>
-                              {del.status === 'scheduled' && (
-                                <button
-                                  onClick={async () => {
-                                    const res = await fetch('/api/admin', {
-                                      method: 'POST',
-                                      headers: { 'Content-Type': 'application/json' },
-                                      body: JSON.stringify({
-                                        action: 'freeze_delivery_day',
-                                        payload: { deliveryId: del.id, orderId: order.id },
-                                      }),
-                                    })
-                                    if (res.ok) fetchAllData()
-                                  }}
-                                  className="mt-2 w-full bg-blue-600 text-white text-[11px] font-bold py-1 rounded cursor-pointer"
-                                >
-                                  Dondur
-                                </button>
-                              )}
-                            </div>
-                          ))}
+                            )
+                          })}
                         </div>
                       )}
                     </div>
@@ -1608,7 +1662,7 @@ export default function AdminDashboardPage() {
                 <div className="lg:col-span-8 bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-4">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <h3 className="font-extrabold text-slate-900 text-base">
-                      3. Mahalleler & Ek Ücretler ({filteredNeighborhoods.length})
+                      3. Mahalleler &amp; Ek Ücretler ({filteredNeighborhoods.length})
                     </h3>
                     <button
                       onClick={() =>
@@ -2006,10 +2060,10 @@ export default function AdminDashboardPage() {
                         onChange={(e) => setFaqForm({ ...faqForm, category: e.target.value })}
                         className="w-full border border-slate-300 rounded-xl px-3 py-2 text-xs"
                       >
-                        <option value="Sipariş & Teslimat">Sipariş & Teslimat</option>
-                        <option value="Paketler & Beslenme">Paketler & Beslenme</option>
-                        <option value="Dondurma & İptal">Dondurma & İptal</option>
-                        <option value="Ödeme & Fatura">Ödeme & Fatura</option>
+                        <option value="Sipariş & Teslimat">Sipariş &amp; Teslimat</option>
+                        <option value="Paketler & Beslenme">Paketler &amp; Beslenme</option>
+                        <option value="Dondurma & İptal">Dondurma &amp; İptal</option>
+                        <option value="Ödeme & Fatura">Ödeme &amp; Fatura</option>
                         <option value="Genel">Genel</option>
                       </select>
                     </div>
@@ -2193,7 +2247,7 @@ export default function AdminDashboardPage() {
                     <input
                       type="text"
                       required
-                      placeholder="Örn: /kalori-hesaplama veya /kurumsal/hakkimizda"
+                      placeholder="Örn: /kalori-hesaplama veya /tedarikcilerimiz"
                       value={menuForm.url}
                       onChange={(e) => setMenuForm({ ...menuForm, url: e.target.value })}
                       className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm"
@@ -2491,8 +2545,8 @@ export default function AdminDashboardPage() {
                     className="w-full border border-slate-300 rounded-xl px-3.5 py-2 text-sm"
                   >
                     <option value="super_admin">Tam Yetkili Yönetici (Super Admin)</option>
-                    <option value="editor">Operasyon & Diyetisyen (Editör)</option>
-                    <option value="kitchen">Mutfak & Sevkiyat Sorumlusu</option>
+                    <option value="editor">Operasyon &amp; Diyetisyen (Editör)</option>
+                    <option value="kitchen">Mutfak &amp; Sevkiyat Sorumlusu</option>
                   </select>
                   <button
                     type="submit"

@@ -1,5 +1,6 @@
 // src/lib/calendar-engine.ts
-import { addDays, format, isSunday, isSaturday, parseISO, startOfDay } from 'date-fns'
+import { addDays, format, isSunday, isSaturday, parseISO, startOfDay, subDays } from 'date-fns'
+import { tr } from 'date-fns/locale'
 import { DeliveryScheduleType } from '@/types/database'
 
 export interface ScheduledDeliveryDay {
@@ -9,11 +10,13 @@ export interface ScheduledDeliveryDay {
 
 /**
  * Kullanıcının cihaz saat diliminden bağımsız olarak
- * Türkiye (Europe/Istanbul) tarihini (gün başlangıcı) ve saatini döner.
+ * Türkiye (Europe/Istanbul) tarihini ve saat/dakika/saniye bilgisini döner.
  */
 export function getIstanbulNow(now: Date = new Date()): {
   istanbulDayStart: Date
   hour: number
+  minute: number
+  second: number
 } {
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone: 'Europe/Istanbul',
@@ -21,6 +24,8 @@ export function getIstanbulNow(now: Date = new Date()): {
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
     hour12: false,
   }).formatToParts(now)
 
@@ -29,17 +34,21 @@ export function getIstanbulNow(now: Date = new Date()): {
   const month = get('month')
   const day = get('day')
   const hour = get('hour') % 24
+  const minute = get('minute')
+  const second = get('second')
 
   return {
     istanbulDayStart: new Date(year, month - 1, day),
     hour,
+    minute,
+    second,
   }
 }
 
 /**
  * Türkiye (Europe/Istanbul) saatine göre müşterinin seçebileceği ilk geçerli başlangıç tarihini döner:
  * - Pazartesi - Cuma 12:00'ye kadar: Ertesi gün (+1 gün)
- * - Pazartesi - Cuma 12:00 ve sonrası: +2 gün (Cuma 12:00 sonrası Pazar'a denk gelip Pazartesi'ye kayar)
+ * - Pazartesi - Cuma 12:00 ve sonrası: +2 gün (Cuma 12:00 sonrası Pazartesi'ye kayar)
  * - Cumartesi 12:00'ye kadar: Pazartesi (+2 gün)
  * - Cumartesi 12:00 ve sonrası: Salı (+3 gün)
  * - Pazar (tüm gün): Salı (+2 gün)
@@ -56,19 +65,15 @@ export function getEarliestStartDate(
   let daysToAdd = minPrepDays
 
   if (isSunday(istanbulDayStart)) {
-    // Pazar tüm gün -> Salı (+2 gün)
     daysToAdd = minPrepDays
   } else if (isSaturday(istanbulDayStart)) {
-    // Cumartesi 12:00'ye kadar -> Pazartesi (+2), 12:00 sonrası -> Salı (+3)
     daysToAdd = isAfterNoon ? minPrepDays + 1 : minPrepDays
   } else {
-    // Pazartesi - Cuma: 12:00'ye kadar -> Ertesi gün (+1), 12:00 sonrası -> +2 gün
     daysToAdd = isAfterNoon ? minPrepDays : 1
   }
 
   let candidate = addDays(istanbulDayStart, daysToAdd)
 
-  // İlk uygun gün Pazar ise veya kapalı/tatil günüyse bir sonraki güne kaydır
   while (isSunday(candidate) || blockedSet.has(format(candidate, 'yyyy-MM-dd'))) {
     candidate = addDays(candidate, 1)
   }
@@ -77,8 +82,102 @@ export function getEarliestStartDate(
 }
 
 /**
- * Belirli bir tarihin takvimde başlangıç günü olarak seçilebilir olup olmadığını kontrol eder.
+ * Ödeme sayfasındaki canlı geri sayım banner'ı için gerçek zamanlı bilgi üretir.
  */
+export function getDeliveryCountdownInfo(
+  minPrepDays: number = 2,
+  blockedDates: string[] = [],
+  now: Date = new Date()
+): {
+  isBeforeCutoff: boolean
+  isSundayToday: boolean
+  remainingFormatted: string
+  earliestDateLabel: string
+  isTomorrow: boolean
+  nextDayLabel: string
+} {
+  const { istanbulDayStart, hour, minute, second } = getIstanbulNow(now)
+  const isSundayToday = isSunday(istanbulDayStart)
+  const isBeforeCutoff = !isSundayToday && hour < 12
+
+  const earliest = getEarliestStartDate(minPrepDays, blockedDates, now)
+  const tomorrow = addDays(istanbulDayStart, 1)
+  const isTomorrow = format(earliest, 'yyyy-MM-dd') === format(tomorrow, 'yyyy-MM-dd')
+
+  const earliestDateLabel = format(earliest, 'd MMMM EEEE', { locale: tr })
+
+  // 12:00'ye kalan süre
+  const totalSecondsLeft = Math.max(0, 12 * 3600 - (hour * 3600 + minute * 60 + second))
+  const h = Math.floor(totalSecondsLeft / 3600)
+  const m = Math.floor((totalSecondsLeft % 3600) / 60)
+  const s = totalSecondsLeft % 60
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const remainingFormatted = `${pad(h)} sa ${pad(m)} dk ${pad(s)} sn`
+
+  // 12:00 geçince açılacak sonraki gün
+  const afterNoonSample = new Date(now.getTime())
+  const nextEarliest = getEarliestStartDate(
+    minPrepDays,
+    blockedDates,
+    new Date(istanbulDayStart.getFullYear(), istanbulDayStart.getMonth(), istanbulDayStart.getDate(), 13, 0, 0)
+  )
+  const nextDayLabel = format(nextEarliest, 'd MMMM EEEE', { locale: tr })
+  void afterNoonSample
+
+  return {
+    isBeforeCutoff,
+    isSundayToday,
+    remainingFormatted,
+    earliestDateLabel,
+    isTomorrow,
+    nextDayLabel,
+  }
+}
+
+/**
+ * Paket Dondurma Zaman Kuralı:
+ * Teslimat gününden 1 gün önce saat 12:00'ye (İstanbul saati) kadar dondurulabilir.
+ */
+export function getFreezeEligibility(
+  deliveryDateStr: string,
+  now: Date = new Date()
+): {
+  canFreeze: boolean
+  reason: string
+  deadlineText: string
+} {
+  const { istanbulDayStart, hour } = getIstanbulNow(now)
+  const targetDay = startOfDay(parseISO(deliveryDateStr))
+  const deadlineDay = subDays(targetDay, 1)
+  const deadlineText = `${format(deadlineDay, 'dd.MM.yyyy')} saat 12:00`
+
+  // Geçmiş veya bugünün teslimatı
+  if (targetDay <= istanbulDayStart) {
+    return {
+      canFreeze: false,
+      reason: 'Bu teslimat günü başladığı veya geçtiği için dondurulamaz.',
+      deadlineText,
+    }
+  }
+
+  // Yarınki teslimat ve saat 12:00'yi geçtiyse
+  const isDeadlineToday =
+    format(deadlineDay, 'yyyy-MM-dd') === format(istanbulDayStart, 'yyyy-MM-dd')
+  if (isDeadlineToday && hour >= 12) {
+    return {
+      canFreeze: false,
+      reason: `Mutfak hazırlığı başladığı için dondurma süresi doldu (Son işlem: ${deadlineText}).`,
+      deadlineText,
+    }
+  }
+
+  return {
+    canFreeze: true,
+    reason: `Son dondurma: ${deadlineText}`,
+    deadlineText,
+  }
+}
+
 export function isDateSelectableForStart(
   date: Date,
   minPrepDays: number = 2,
@@ -89,21 +188,17 @@ export function isDateSelectableForStart(
   const target = startOfDay(date)
 
   if (target < earliest) return false
-  if (isSunday(target)) return false // Pazar günü kurye dağıtımı yok (C.tesi çift paket gidiyor)
+  if (isSunday(target)) return false
   if (blockedDates.includes(format(target, 'yyyy-MM-dd'))) return false
 
   return true
 }
 
-/**
- * Seçilen Başlangıç Tarihi, Paket Gün Sayısı (5, 10, 14, 21, 30) ve Teslimat Kuralına göre
- * tüm teslimat takvimini ve kesin Paket Bitiş Tarihini hesaplar.
- */
 export function generateDeliverySchedule(
-  startDateStr: string, // YYYY-MM-DD
+  startDateStr: string,
   totalPackageDays: number,
   scheduleType: DeliveryScheduleType,
-  holidayDates: string[] = [] // YYYY-MM-DD formatında resmi tatiller
+  holidayDates: string[] = []
 ): {
   deliveries: ScheduledDeliveryDay[]
   estimatedEndDate: string
@@ -119,29 +214,23 @@ export function generateDeliverySchedule(
     safetyCounter++
     const dateStr = format(currentDate, 'yyyy-MM-dd')
 
-    // 1. Resmi tatil / kapalı gün kontrolü (Hakkı yanmaz, sonraki güne kayar)
     if (holidaySet.has(dateStr)) {
       currentDate = addDays(currentDate, 1)
       continue
     }
 
-    // 2. Pazar günü kontrolü (Hiçbir seçenekte Pazar günü fiziksel kurye çıkmaz)
     if (isSunday(currentDate)) {
       currentDate = addDays(currentDate, 1)
       continue
     }
 
-    // 3. Cumartesi günü kontrolü
     if (isSaturday(currentDate)) {
       if (scheduleType === 'weekdays_only') {
-        // Sadece Hafta İçi seçildiyse Cumartesi atlanır
         currentDate = addDays(currentDate, 1)
         continue
       }
 
       if (scheduleType === 'every_day_sat_double') {
-        // Her Gün (Cumartesi 2 paket - Cumartesi ve Pazar) seçildiyse:
-        // Kalan paket hakkı en az 2 ise Cumartesi 2 paket teslim edilir, 1 ise 1 paket teslim edilir.
         const qty = remainingPackages >= 2 ? 2 : 1
         deliveries.push({
           delivery_date: dateStr,
@@ -153,7 +242,6 @@ export function generateDeliverySchedule(
       }
     }
 
-    // 4. Normal Hafta İçi (veya Pazar Hariç seçeneğindeki Cumartesi) -> 1 Paket
     deliveries.push({
       delivery_date: dateStr,
       package_quantity: 1,
