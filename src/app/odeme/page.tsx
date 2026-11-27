@@ -25,6 +25,7 @@ import {
   Truck,
   UserCheck,
   Info,
+  X,
 } from 'lucide-react'
 import PineappleIcon from '@/components/PineappleIcon'
 
@@ -34,6 +35,22 @@ export default function CheckoutPage() {
   const [minPrepDays, setMinPrepDays] = useState<number>(2)
   const [loggedUserId, setLoggedUserId] = useState<string | null>(null)
   const [autoFilled, setAutoFilled] = useState(false)
+
+  const [posConfig, setPosConfig] = useState<any>({
+    paytr_active: true,
+    bank_transfer_active: true,
+    ziraat_active: false,
+    bank_accounts: [
+      {
+        id: 'bank-ziraat-1',
+        bank_name: 'ZİRAAT BANKASI',
+        account_name: 'MESA TÜKETİM MADDELERİ GIDA İNŞAAT ENERJİ SAN. VE TİC. LTD. ŞTİ.',
+        iban: 'TR63 0001 0014 3997 9194 0750 01',
+      },
+    ],
+    bank_transfer_instructions:
+      'Lütfen Havale / EFT açıklamasına sipariş numaranızı yazınız.',
+  })
 
   // Canlı Saat & Geri Sayım State (Hydration güvenli)
   const [mounted, setMounted] = useState(false)
@@ -62,8 +79,9 @@ export default function CheckoutPage() {
   const [taxOffice, setTaxOffice] = useState('')
   const [taxNo, setTaxNo] = useState('')
 
-  // Ödeme Yöntemi
-  const [paymentMethod, setPaymentMethod] = useState<'ziraat' | 'paytr' | 'iyzico' | 'eft'>('ziraat')
+  // Ödeme Yöntemi & PayTR iFrame
+  const [paymentMethod, setPaymentMethod] = useState<'ziraat' | 'paytr' | 'iyzico' | 'eft'>('paytr')
+  const [paytrIframeToken, setPaytrIframeToken] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [completedOrder, setCompletedOrder] = useState<{
     orderNumber: string
@@ -89,14 +107,23 @@ export default function CheckoutPage() {
 
     const fetchInitialData = async () => {
       const supabase = createClient()
-      const [{ data: blocks }, { data: rules }, { data: userRes }] = await Promise.all([
-        supabase.from('calendar_blocks').select('blocked_date'),
-        supabase.from('system_settings').select('value').eq('key', 'delivery_rules').single(),
-        supabase.auth.getUser(),
-      ])
+      const [{ data: blocks }, { data: rules }, { data: posRes }, { data: userRes }] =
+        await Promise.all([
+          supabase.from('calendar_blocks').select('blocked_date'),
+          supabase.from('system_settings').select('value').eq('key', 'delivery_rules').single(),
+          supabase.from('system_settings').select('value').eq('key', 'pos_config').single(),
+          supabase.auth.getUser(),
+        ])
 
       const blockedList = (blocks || []).map((b) => b.blocked_date)
       setBlockedDates(blockedList)
+
+      if (posRes?.value) {
+        setPosConfig((prev: any) => ({ ...prev, ...posRes.value }))
+        if (posRes.value.paytr_active === false && posRes.value.bank_transfer_active) {
+          setPaymentMethod('eft')
+        }
+      }
 
       const prep = rules?.value?.min_prep_days ?? 2
       setMinPrepDays(prep)
@@ -342,6 +369,33 @@ export default function CheckoutPage() {
       }
 
       sessionStorage.removeItem('dietbox_checkout_draft')
+
+      if (paymentMethod === 'paytr') {
+        const payRes = await fetch('/api/paytr/token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            orderNumber: data.orderNumber,
+            email,
+            grandTotal: draft.priceBreakdown.grandTotal,
+            customerName: fullName,
+            fullAddress,
+            phone,
+            packageTitle: draft.packageTitle,
+            quantity: draft.quantity || 1,
+          }),
+        })
+        const payData = await payRes.json()
+        if (!payRes.ok || !payData.token) {
+          alert(payData.error || 'PayTR ödeme oturumu başlatılamadı.')
+          setSubmitting(false)
+          return
+        }
+        setPaytrIframeToken(payData.token)
+        setSubmitting(false)
+        return
+      }
+
       setCompletedOrder({
         orderNumber: data.orderNumber,
         estimatedEndDate: data.estimatedEndDate,
@@ -392,6 +446,22 @@ export default function CheckoutPage() {
             </div>
           </div>
 
+          {paymentMethod === 'eft' && Array.isArray(posConfig.bank_accounts) && posConfig.bank_accounts.length > 0 && (
+            <div className="bg-emerald-50/60 border border-emerald-200 rounded-2xl p-4 text-left space-y-3 text-xs">
+              <strong className="text-slate-900 block">Havale / EFT Hesap Bilgileri:</strong>
+              {posConfig.bank_accounts.map((acc: any, idx: number) => (
+                <div key={acc.id || idx} className="bg-white p-3 rounded-xl border border-slate-200 space-y-0.5">
+                  <p className="font-extrabold text-slate-900">{acc.bank_name}</p>
+                  <p className="text-slate-600">{acc.account_name}</p>
+                  <p className="font-mono font-bold text-emerald-700">{acc.iban}</p>
+                </div>
+              ))}
+              {posConfig.bank_transfer_instructions && (
+                <p className="text-slate-600 leading-relaxed">{posConfig.bank_transfer_instructions}</p>
+              )}
+            </div>
+          )}
+
           <div className="flex flex-col sm:flex-row gap-3 pt-2">
             <Link
               href="/hesabim"
@@ -428,6 +498,30 @@ export default function CheckoutPage() {
 
   return (
     <main className="min-h-screen bg-slate-50 py-10 px-4 sm:px-6">
+      {paytrIframeToken && (
+        <div className="fixed inset-0 bg-slate-950/75 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-2xl w-full p-4 sm:p-6 shadow-2xl space-y-3">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+              <strong className="text-sm font-extrabold text-slate-900">
+                PayTR Güvenli 3D Ödeme Ekranı
+              </strong>
+              <button
+                type="button"
+                onClick={() => setPaytrIframeToken(null)}
+                className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500 hover:text-red-600 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <iframe
+              src={`https://www.paytr.com/odeme/guvenli/${paytrIframeToken}`}
+              className="w-full h-[540px] rounded-xl border border-slate-200"
+              frameBorder="0"
+            />
+          </div>
+        </div>
+      )}
+
       <div className="max-w-6xl mx-auto space-y-8">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <Link
@@ -858,67 +952,99 @@ export default function CheckoutPage() {
                   Ödeme Yöntemi Seçin
                 </span>
 
-                <label
-                  className={`flex items-center gap-3 p-3.5 rounded-xl border cursor-pointer transition ${
-                    paymentMethod === 'ziraat'
-                      ? 'border-emerald-600 bg-emerald-50/50'
-                      : 'border-slate-200'
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="paymentMethod"
-                    checked={paymentMethod === 'ziraat'}
-                    onChange={() => setPaymentMethod('ziraat')}
-                  />
-                  <CreditCard className="w-5 h-5 text-red-600 shrink-0" />
-                  <div className="text-xs">
-                    <p className="font-bold text-slate-900">
-                      Kredi / Banka Kartı (Ziraat Bankası 3D Secure)
-                    </p>
-                    <p className="text-slate-500">256-bit SSL güvenli ödeme</p>
-                  </div>
-                </label>
+                {posConfig.paytr_active !== false && (
+                  <label
+                    className={`flex items-center gap-3 p-3.5 rounded-xl border cursor-pointer transition ${
+                      paymentMethod === 'paytr'
+                        ? 'border-emerald-600 bg-emerald-50/50'
+                        : 'border-slate-200'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="paymentMethod"
+                      checked={paymentMethod === 'paytr'}
+                      onChange={() => setPaymentMethod('paytr')}
+                    />
+                    <CreditCard className="w-5 h-5 text-blue-600 shrink-0" />
+                    <div className="text-xs">
+                      <p className="font-bold text-slate-900">
+                        Kredi / Banka Kartı (PayTR 3D Secure)
+                      </p>
+                      <p className="text-slate-500">256-bit SSL güvenli kart ödemesi</p>
+                    </div>
+                  </label>
+                )}
 
-                <label
-                  className={`flex items-center gap-3 p-3.5 rounded-xl border cursor-pointer transition ${
-                    paymentMethod === 'paytr'
-                      ? 'border-emerald-600 bg-emerald-50/50'
-                      : 'border-slate-200'
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="paymentMethod"
-                    checked={paymentMethod === 'paytr'}
-                    onChange={() => setPaymentMethod('paytr')}
-                  />
-                  <CreditCard className="w-5 h-5 text-blue-600 shrink-0" />
-                  <div className="text-xs">
-                    <p className="font-bold text-slate-900">Kredi / Banka Kartı (PayTR / iyzico POS)</p>
-                    <p className="text-slate-500">Alternatif 3D sanal POS</p>
-                  </div>
-                </label>
+                {posConfig.ziraat_active && (
+                  <label
+                    className={`flex items-center gap-3 p-3.5 rounded-xl border cursor-pointer transition ${
+                      paymentMethod === 'ziraat'
+                        ? 'border-emerald-600 bg-emerald-50/50'
+                        : 'border-slate-200'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="paymentMethod"
+                      checked={paymentMethod === 'ziraat'}
+                      onChange={() => setPaymentMethod('ziraat')}
+                    />
+                    <CreditCard className="w-5 h-5 text-red-600 shrink-0" />
+                    <div className="text-xs">
+                      <p className="font-bold text-slate-900">
+                        Kredi / Banka Kartı (Ziraat Bankası 3D Secure)
+                      </p>
+                      <p className="text-slate-500">256-bit SSL güvenli ödeme</p>
+                    </div>
+                  </label>
+                )}
 
-                <label
-                  className={`flex items-center gap-3 p-3.5 rounded-xl border cursor-pointer transition ${
-                    paymentMethod === 'eft'
-                      ? 'border-emerald-600 bg-emerald-50/50'
-                      : 'border-slate-200'
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="paymentMethod"
-                    checked={paymentMethod === 'eft'}
-                    onChange={() => setPaymentMethod('eft')}
-                  />
-                  <Landmark className="w-5 h-5 text-slate-700 shrink-0" />
-                  <div className="text-xs">
-                    <p className="font-bold text-slate-900">Banka Havalesi / EFT</p>
-                    <p className="text-slate-500">Sipariş numaranızla havale</p>
+                {posConfig.bank_transfer_active !== false && (
+                  <div className="space-y-2">
+                    <label
+                      className={`flex items-center gap-3 p-3.5 rounded-xl border cursor-pointer transition ${
+                        paymentMethod === 'eft'
+                          ? 'border-emerald-600 bg-emerald-50/50'
+                          : 'border-slate-200'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="paymentMethod"
+                        checked={paymentMethod === 'eft'}
+                        onChange={() => setPaymentMethod('eft')}
+                      />
+                      <Landmark className="w-5 h-5 text-slate-700 shrink-0" />
+                      <div className="text-xs">
+                        <p className="font-bold text-slate-900">Banka Havalesi / EFT</p>
+                        <p className="text-slate-500">Sipariş numaranızla havale</p>
+                      </div>
+                    </label>
+
+                    {paymentMethod === 'eft' &&
+                      Array.isArray(posConfig.bank_accounts) &&
+                      posConfig.bank_accounts.length > 0 && (
+                        <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2 text-xs">
+                          {posConfig.bank_accounts.map((acc: any, idx: number) => (
+                            <div
+                              key={acc.id || idx}
+                              className="bg-white p-2.5 rounded-lg border border-slate-200 space-y-0.5"
+                            >
+                              <p className="font-extrabold text-slate-900">{acc.bank_name}</p>
+                              <p className="text-slate-600 text-[11px]">{acc.account_name}</p>
+                              <p className="font-mono font-bold text-emerald-700">{acc.iban}</p>
+                            </div>
+                          ))}
+                          {posConfig.bank_transfer_instructions && (
+                            <p className="text-[11px] text-slate-500 leading-relaxed">
+                              {posConfig.bank_transfer_instructions}
+                            </p>
+                          )}
+                        </div>
+                      )}
                   </div>
-                </label>
+                )}
               </div>
 
               <button

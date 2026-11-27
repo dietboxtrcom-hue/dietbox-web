@@ -2732,39 +2732,158 @@ export default function AdminDashboardPage() {
                 </button>
               </form>
 
-              <div className="lg:col-span-5 bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-4 h-fit">
-                <h3 className="text-base font-extrabold text-slate-900">Çoklu Sanal POS Durumu</h3>
-                {['ziraat_active', 'paytr_active', 'bank_transfer_active'].map((key) => (
-                  <label
-                    key={key}
-                    className="flex items-center justify-between p-3.5 rounded-xl border border-slate-200 cursor-pointer"
-                  >
-                    <span className="text-xs font-bold text-slate-800">
-                      {key === 'ziraat_active'
-                        ? 'Ziraat Bankası Sanal POS (3D Secure)'
-                        : key === 'paytr_active'
-                        ? 'PayTR / iyzico Sanal POS'
-                        : 'Banka Havalesi / EFT'}
+              <div className="lg:col-span-5 bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-5 h-fit">
+                <h3 className="text-base font-extrabold text-slate-900">
+                  Ödeme Yöntemleri (PayTR &amp; Havale)
+                </h3>
+
+                <div className="space-y-2.5">
+                  {[
+                    { key: 'paytr_active', label: 'PayTR Sanal POS (Kredi / Banka Kartı)' },
+                    { key: 'bank_transfer_active', label: 'Banka Havalesi / EFT' },
+                    { key: 'ziraat_active', label: 'Ziraat Bankası Sanal POS (Yakında)' },
+                  ].map((item) => (
+                    <label
+                      key={item.key}
+                      className="flex items-center justify-between p-3 rounded-xl border border-slate-200 cursor-pointer"
+                    >
+                      <span className="text-xs font-bold text-slate-800">{item.label}</span>
+                      <input
+                        type="checkbox"
+                        checked={Boolean(posConfig[item.key])}
+                        onChange={(e) =>
+                          setPosConfig({ ...posConfig, [item.key]: e.target.checked })
+                        }
+                        className="w-5 h-5 accent-emerald-600"
+                      />
+                    </label>
+                  ))}
+                </div>
+
+                {/* HAVALE / EFT BANKA HESAPLARI */}
+                <div className="pt-3 border-t border-slate-100 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-extrabold text-slate-800">
+                      Havale / EFT Banka Hesapları
                     </span>
-                    <input
-                      type="checkbox"
-                      checked={Boolean(posConfig[key])}
-                      onChange={async (e) => {
-                        const next = { ...posConfig, [key]: e.target.checked }
-                        setPosConfig(next)
-                        await fetch('/api/admin', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({
-                            action: 'save_system_setting',
-                            payload: { key: 'pos_config', value: next },
-                          }),
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const list = Array.isArray(posConfig.bank_accounts)
+                          ? posConfig.bank_accounts
+                          : []
+                        setPosConfig({
+                          ...posConfig,
+                          bank_accounts: [
+                            ...list,
+                            {
+                              id: `bank-${Date.now()}`,
+                              bank_name: '',
+                              account_name: '',
+                              iban: '',
+                            },
+                          ],
                         })
                       }}
-                      className="w-5 h-5 accent-emerald-600"
+                      className="bg-emerald-600 text-white text-[11px] font-bold px-2.5 py-1.5 rounded-lg inline-flex items-center gap-1 cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Hesap Ekle
+                    </button>
+                  </div>
+
+                  <div className="space-y-2.5">
+                    {(Array.isArray(posConfig.bank_accounts) ? posConfig.bank_accounts : []).map(
+                      (acc: any, idx: number, arr: any[]) => (
+                        <div
+                          key={acc.id || idx}
+                          className="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-2"
+                        >
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="text"
+                              placeholder="Banka Adı (Örn: ZİRAAT BANKASI)"
+                              value={acc.bank_name || ''}
+                              onChange={(e) => {
+                                const next = arr.map((a, i) =>
+                                  i === idx ? { ...a, bank_name: e.target.value } : a
+                                )
+                                setPosConfig({ ...posConfig, bank_accounts: next })
+                              }}
+                              className="flex-1 border border-slate-300 bg-white rounded-lg px-2.5 py-1.5 text-xs font-bold"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const next = arr.filter((_, i) => i !== idx)
+                                setPosConfig({ ...posConfig, bank_accounts: next })
+                              }}
+                              className="text-red-500 p-1 cursor-pointer"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                          <input
+                            type="text"
+                            placeholder="Hesap Sahibi Ünvanı"
+                            value={acc.account_name || ''}
+                            onChange={(e) => {
+                              const next = arr.map((a, i) =>
+                                i === idx ? { ...a, account_name: e.target.value } : a
+                              )
+                              setPosConfig({ ...posConfig, bank_accounts: next })
+                            }}
+                            className="w-full border border-slate-300 bg-white rounded-lg px-2.5 py-1.5 text-xs"
+                          />
+                          <input
+                            type="text"
+                            placeholder="IBAN (TR..)"
+                            value={acc.iban || ''}
+                            onChange={(e) => {
+                              const next = arr.map((a, i) =>
+                                i === idx ? { ...a, iban: e.target.value } : a
+                              )
+                              setPosConfig({ ...posConfig, bank_accounts: next })
+                            }}
+                            className="w-full border border-slate-300 bg-white rounded-lg px-2.5 py-1.5 text-xs font-mono"
+                          />
+                        </div>
+                      )
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                      Havale Talimatı (Ödeme &amp; Teşekkür Ekranında Görünür)
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={posConfig.bank_transfer_instructions || ''}
+                      onChange={(e) =>
+                        setPosConfig({ ...posConfig, bank_transfer_instructions: e.target.value })
+                      }
+                      className="w-full border border-slate-300 rounded-xl px-3 py-2 text-xs"
                     />
-                  </label>
-                ))}
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await fetch('/api/admin', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        action: 'save_system_setting',
+                        payload: { key: 'pos_config', value: posConfig },
+                      }),
+                    })
+                    alert('Ödeme yöntemleri ve havale bilgileri kaydedildi!')
+                  }}
+                  className="w-full bg-slate-900 hover:bg-emerald-600 text-white font-bold py-2.5 rounded-xl text-xs flex items-center justify-center gap-2 cursor-pointer transition"
+                >
+                  <Save className="w-4 h-4" />
+                  Ödeme &amp; Havale Ayarlarını Kaydet
+                </button>
               </div>
 
               {/* SOSYAL MEDYA HESAPLARI (+ İLE ARTIRILABİLİR) */}
