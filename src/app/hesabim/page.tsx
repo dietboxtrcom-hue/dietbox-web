@@ -7,7 +7,11 @@ import { useRouter } from 'next/navigation'
 import { format, isAfter, parseISO, startOfDay } from 'date-fns'
 import { createClient } from '@/lib/supabase/client'
 import { formatTRY } from '@/lib/pricing-engine'
-import { getFreezeEligibility } from '@/lib/calendar-engine'
+import {
+  getFreezeEligibility,
+  getAddressChangeEligibility,
+  getIstanbulNow,
+} from '@/lib/calendar-engine'
 import SiteHeader from '@/components/SiteHeader'
 import SiteFooter from '@/components/SiteFooter'
 import WeightProgressTracker from '@/components/WeightProgressTracker'
@@ -26,6 +30,8 @@ import {
   FileText,
   ArrowRight,
   Clock,
+  Edit3,
+  X,
 } from 'lucide-react'
 
 export default function CustomerAccountPage() {
@@ -69,6 +75,13 @@ export default function CustomerAccountPage() {
   const [guestSearch, setGuestSearch] = useState('')
   const [loadingOrders, setLoadingOrders] = useState(false)
   const [freezingId, setFreezingId] = useState<string | null>(null)
+
+  // Sipariş Adres Değişikliği Modal State'i
+  const [addressModalOrder, setAddressModalOrder] = useState<any | null>(null)
+  const [addrDistrictId, setAddrDistrictId] = useState<string>('')
+  const [addrNeighborhoodId, setAddrNeighborhoodId] = useState<string>('')
+  const [addrFullText, setAddrFullText] = useState<string>('')
+  const [savingAddress, setSavingAddress] = useState(false)
 
   const fetchOrdersFromApi = async (params: {
     userId?: string
@@ -191,6 +204,11 @@ export default function CustomerAccountPage() {
     return neighborhoods.filter((n) => Number(n.district_id) === Number(profile.district_id))
   }, [neighborhoods, profile.district_id])
 
+  const modalNeighborhoods = useMemo(() => {
+    if (!addrDistrictId) return []
+    return neighborhoods.filter((n) => Number(n.district_id) === Number(addrDistrictId))
+  }, [neighborhoods, addrDistrictId])
+
   const healthMetrics = useMemo(() => {
     const h = Number(profile.height_cm)
     const w = Number(profile.weight_kg)
@@ -278,7 +296,9 @@ export default function CustomerAccountPage() {
     if (error) {
       alert(error.message)
     } else {
-      alert('Profil, mahalle, fatura ve beslenme bilgileriniz kaydedildi! Sipariş ekranında otomatik doldurulacaktır.')
+      alert(
+        'Profil, mahalle, fatura ve beslenme bilgileriniz kaydedildi! Sipariş ekranında otomatik doldurulacaktır.'
+      )
       fetchOrdersFromApi({
         userId: authUser.id,
         email: profile.email,
@@ -319,7 +339,79 @@ export default function CustomerAccountPage() {
     }
   }
 
+  const openAddressModal = (order: any, nextDeliveryDate: string) => {
+    const check = getAddressChangeEligibility(nextDeliveryDate)
+    if (!check.canChange) {
+      alert(check.reason)
+      return
+    }
+
+    const dMatch = districts.find(
+      (d) => d.name?.toLowerCase() === String(order.district_name || '').trim().toLowerCase()
+    )
+    const nMatch =
+      neighborhoods.find((n) => order.neighborhood_id && n.id === order.neighborhood_id) ||
+      neighborhoods.find(
+        (n) =>
+          (!dMatch || n.district_id === dMatch.id) &&
+          n.name?.toLowerCase() === String(order.neighborhood_name || '').trim().toLowerCase()
+      )
+
+    setAddrDistrictId(dMatch ? String(dMatch.id) : districts[0] ? String(districts[0].id) : '')
+    setAddrNeighborhoodId(nMatch ? String(nMatch.id) : '')
+    setAddrFullText(order.full_address || '')
+    setAddressModalOrder({ ...order, _nextDeliveryDate: nextDeliveryDate })
+  }
+
+  const handleSaveOrderAddress = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!addressModalOrder) return
+
+    const dObj = districts.find((d) => String(d.id) === addrDistrictId)
+    const nObj = modalNeighborhoods.find((n) => String(n.id) === addrNeighborhoodId)
+
+    if (!dObj || !nObj || !addrFullText.trim()) {
+      alert('Lütfen ilçe, mahalle ve açık adres bilgilerini eksiksiz doldurun.')
+      return
+    }
+
+    setSavingAddress(true)
+    try {
+      const res = await fetch('/api/account/update-address', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderId: addressModalOrder.id,
+          districtName: dObj.name,
+          neighborhoodId: nObj.id,
+          neighborhoodName: nObj.name,
+          fullAddress: addrFullText.trim(),
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        alert(data.error || 'Adres güncellenemedi.')
+        return
+      }
+      alert(
+        `Teslimat adresiniz güncellendi! ${format(
+          parseISO(data.nextDeliveryDate),
+          'dd.MM.yyyy'
+        )} tarihli teslimattan itibaren yeni adresinize gönderim yapılacaktır.`
+      )
+      setAddressModalOrder(null)
+      if (guestSearch) {
+        fetchOrdersFromApi({ searchQuery: guestSearch })
+      } else if (authUser) {
+        fetchOrdersFromApi({ userId: authUser.id, email: profile.email, phone: profile.phone })
+      }
+    } finally {
+      setSavingAddress(false)
+    }
+  }
+
   const today = startOfDay(new Date())
+  const todayIstanbulStr = format(getIstanbulNow().istanbulDayStart, 'yyyy-MM-dd')
 
   return (
     <div className="min-h-screen bg-[#f8faf9] flex flex-col justify-between">
@@ -415,7 +507,7 @@ export default function CustomerAccountPage() {
               }`}
             >
               <Package className="w-4 h-4" />
-              Siparişlerim &amp; Gün Dondurma ({orders.length})
+              Siparişlerim, Adres &amp; Gün Dondurma ({orders.length})
             </button>
           </div>
         )}
@@ -617,7 +709,7 @@ export default function CustomerAccountPage() {
                 </div>
               </div>
 
-              {/* SAĞ: VKİ (Vücut Kitle Endeksi) & Kalori Hesaplama Paneli */}
+              {/* SAĞ: VKİ & Kalori Hesaplama Paneli */}
               <div className="lg:col-span-5 bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 space-y-5 h-fit">
                 <h2 className="text-lg font-extrabold text-slate-900 flex items-center gap-2">
                   <Activity className="w-5 h-5 text-[#eab130]" />
@@ -777,7 +869,7 @@ export default function CustomerAccountPage() {
           </div>
         )}
 
-        {/* SEKME 2: SİPARİŞLERİM & MİSAFİR SORGULAMA */}
+        {/* SEKME 2: SİPARİŞLERİM, ADRES DEĞİŞİKLİĞİ & MİSAFİR SORGULAMA */}
         {(!authUser || activeTab === 'orders') && (
           <div className="space-y-6">
             <form
@@ -803,14 +895,24 @@ export default function CustomerAccountPage() {
               </button>
             </form>
 
-            {/* Dondurma Kuralı Bilgi Bandı */}
-            <div className="bg-blue-50/80 border border-blue-200 rounded-2xl px-4 py-3 text-xs text-blue-950 flex items-center gap-2.5">
-              <Clock className="w-4 h-4 text-blue-600 shrink-0" />
-              <span>
-                <strong>Gün Dondurma Kuralı:</strong> Teslimat gününden en geç{' '}
-                <strong>1 gün önce saat 12:00&apos;ye kadar</strong> tek tıkla gününüzü dondurabilirsiniz.
-                12:00 sonrasında ertesi günün mutfak hazırlığı başladığı için ilgili gün kilitlenir.
-              </span>
+            {/* Dondurma ve Adres Değişikliği Kuralları Bilgi Bandı */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="bg-blue-50/80 border border-blue-200 rounded-2xl px-4 py-3 text-xs text-blue-950 flex items-start gap-2.5">
+                <Clock className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+                <span>
+                  <strong>Gün Dondurma Kuralı:</strong> Teslimat gününden en geç{' '}
+                  <strong>1 gün önce saat 12:00&apos;ye kadar</strong> tek tıkla gününüzü dondurabilirsiniz.
+                </span>
+              </div>
+              <div className="bg-amber-50/80 border border-amber-200 rounded-2xl px-4 py-3 text-xs text-amber-950 flex items-start gap-2.5">
+                <MapPin className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <span>
+                  <strong>Adres Değişikliği Kuralı:</strong> Normal günler için{' '}
+                  <strong>1 gün önce 14:00</strong>, Pazar teslimatı için{' '}
+                  <strong>Cuma 14:00</strong>, Pazartesi teslimatı için{' '}
+                  <strong>Cumartesi 12:00</strong>&apos;ye kadar adresinizi güncelleyebilirsiniz.
+                </span>
+              </div>
             </div>
 
             {orders.length === 0 ? (
@@ -831,14 +933,21 @@ export default function CustomerAccountPage() {
                 const deliveries = [...(order.order_deliveries || [])].sort((a, b) =>
                   a.delivery_date.localeCompare(b.delivery_date)
                 )
+                const nextScheduled = deliveries.find(
+                  (d) => d.status === 'scheduled' && d.delivery_date > todayIstanbulStr
+                )
+                const addrEligibility = nextScheduled
+                  ? getAddressChangeEligibility(nextScheduled.delivery_date)
+                  : null
+
                 return (
                   <div
                     key={order.id}
                     className="bg-white rounded-3xl p-6 border border-slate-200 space-y-5"
                   >
                     <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-100 pb-4">
-                      <div>
-                        <div className="flex items-center gap-2">
+                      <div className="space-y-1.5">
+                        <div className="flex flex-wrap items-center gap-2">
                           <span className="bg-[#0d1f18] text-white text-xs font-bold px-2.5 py-1 rounded-md">
                             {order.order_number}
                           </span>
@@ -846,15 +955,39 @@ export default function CustomerAccountPage() {
                             {order.package_title} ({order.duration_days} Gün)
                           </h3>
                         </div>
-                        <p className="text-xs text-slate-500 mt-1">
-                          {order.district_name} / {order.neighborhood_name} — {order.full_address}
+                        <p className="text-xs text-slate-500 flex items-center gap-1.5">
+                          <MapPin className="w-3.5 h-3.5 text-[#51a885] shrink-0" />
+                          <span>
+                            {order.district_name} / {order.neighborhood_name} — {order.full_address}
+                          </span>
                         </p>
                       </div>
-                      <div className="text-right">
-                        <span className="text-xs text-slate-400 block">Toplam Tutar</span>
-                        <strong className="text-lg font-black text-[#51a885]">
-                          {formatTRY(order.grand_total)}
-                        </strong>
+
+                      <div className="flex flex-col sm:items-end gap-2">
+                        <div className="text-left sm:text-right">
+                          <span className="text-xs text-slate-400 block">Toplam Tutar</span>
+                          <strong className="text-lg font-black text-[#51a885]">
+                            {formatTRY(order.grand_total)}
+                          </strong>
+                        </div>
+
+                        {nextScheduled && addrEligibility && (
+                          <button
+                            type="button"
+                            onClick={() => openAddressModal(order, nextScheduled.delivery_date)}
+                            title={addrEligibility.reason}
+                            className={`text-xs font-bold px-3.5 py-2 rounded-xl inline-flex items-center gap-1.5 cursor-pointer transition ${
+                              addrEligibility.canChange
+                                ? 'bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300'
+                                : 'bg-slate-100 text-slate-500 border border-slate-200'
+                            }`}
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                            {addrEligibility.canChange
+                              ? 'Teslimat Adresini Değiştir'
+                              : 'Adres Değişikliği Süresi Doldu'}
+                          </button>
+                        )}
                       </div>
                     </div>
 
@@ -947,6 +1080,114 @@ export default function CustomerAccountPage() {
           </div>
         )}
       </main>
+
+      {/* SİPARİŞ ADRES DEĞİŞİKLİĞİ MODALI */}
+      {addressModalOrder && (
+        <div className="fixed inset-0 bg-slate-950/70 z-50 flex items-center justify-center p-4">
+          <form
+            onSubmit={handleSaveOrderAddress}
+            className="bg-white rounded-3xl max-w-lg w-full p-6 space-y-4 shadow-2xl"
+          >
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+              <div>
+                <h3 className="font-extrabold text-slate-900 text-base">
+                  Teslimat Adresini Değiştir
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Sipariş: <strong>{addressModalOrder.order_number}</strong> • Geçerlilik:{' '}
+                  <strong>
+                    {format(parseISO(addressModalOrder._nextDeliveryDate), 'dd.MM.yyyy')}
+                  </strong>{' '}
+                  ve sonrası
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAddressModalOrder(null)}
+                className="p-1.5 rounded-full hover:bg-slate-100 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">İlçe *</label>
+                <select
+                  required
+                  value={addrDistrictId}
+                  onChange={(e) => {
+                    const nextDistId = e.target.value
+                    setAddrDistrictId(nextDistId)
+                    const firstN = neighborhoods.find(
+                      (n) => String(n.district_id) === nextDistId
+                    )
+                    setAddrNeighborhoodId(firstN ? String(firstN.id) : '')
+                  }}
+                  className="w-full border border-slate-300 rounded-xl px-3 py-2 text-xs bg-white"
+                >
+                  <option value="">İlçe Seçiniz...</option>
+                  {districts.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.name} ({d.side})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Mahalle *</label>
+                <select
+                  required
+                  value={addrNeighborhoodId}
+                  disabled={!addrDistrictId}
+                  onChange={(e) => setAddrNeighborhoodId(e.target.value)}
+                  className="w-full border border-slate-300 rounded-xl px-3 py-2 text-xs bg-white disabled:bg-slate-50"
+                >
+                  <option value="">Mahalle Seçiniz...</option>
+                  {modalNeighborhoods.map((n) => (
+                    <option key={n.id} value={n.id}>
+                      {n.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                Yeni Açık Adres *
+              </label>
+              <textarea
+                rows={3}
+                required
+                placeholder="Cadde, sokak, bina, daire ve kurye notu..."
+                value={addrFullText}
+                onChange={(e) => setAddrFullText(e.target.value)}
+                className="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setAddressModalOrder(null)}
+                className="px-4 py-2.5 rounded-xl border border-slate-300 text-xs font-bold cursor-pointer"
+              >
+                Vazgeç
+              </button>
+              <button
+                type="submit"
+                disabled={savingAddress}
+                className="bg-[#51a885] hover:bg-[#3f8d6d] disabled:opacity-50 text-white font-bold px-5 py-2.5 rounded-xl text-xs inline-flex items-center gap-1.5 cursor-pointer transition"
+              >
+                <Save className="w-4 h-4" />
+                {savingAddress ? 'Güncelleniyor...' : 'Yeni Adresi Kaydet'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
 
       <SiteFooter generalSettings={settings} />
     </div>

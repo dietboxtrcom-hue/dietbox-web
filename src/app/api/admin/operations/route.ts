@@ -18,7 +18,6 @@ function buildScheduleWithExclusions(
   let current = parseISO(startDateStr)
   let safety = 0
 
-  // Pazar başlangıçlı "Her Gün" paketinde ilk gün paketi Cumartesi sabahı teslim edilir
   if (isSunday(current) && scheduleType === 'every_day_sat_double' && remaining > 0) {
     const prevSatStr = format(subDays(current, 1), 'yyyy-MM-dd')
     if (!holidaySet.has(prevSatStr)) {
@@ -31,7 +30,7 @@ function buildScheduleWithExclusions(
   while (remaining > 0 && safety < 365) {
     safety++
     const dateStr = format(current, 'yyyy-MM-dd')
-    const dow = getDay(current) // 0=Pazar, 1=Pzt ... 6=Cmt
+    const dow = getDay(current)
 
     if (holidaySet.has(dateStr) || isSunday(current) || excludedSet.has(dow)) {
       current = addDays(current, 1)
@@ -151,6 +150,7 @@ export async function POST(request: Request) {
           special_ops_note: specialOpsNote.trim(),
           balance_due: safeBalance,
           excluded_weekdays: excludedWeekdays,
+          changed_fields: {},
           source,
         })
         .select('*')
@@ -181,26 +181,85 @@ export async function POST(request: Request) {
       })
     }
 
-    // 2. ÜYE TAKİP PANOSUNDAN HIZLI NOT / BAKİYE / DİYETİSYEN GÜNCELLEME
+    // 2. ÜYE TAKİP PANOSUNDAN HIZLI GÜNCELLEME (ADRES / PAKET / KALORİ DEĞİŞİKLİĞİNİ OTOMATİK RENKLE)
     if (action === 'update_order_ops') {
-      const { orderId, dietitian_note, order_note, special_ops_note, balance_due, status } = payload
+      const {
+        orderId,
+        package_title,
+        full_address,
+        district_name,
+        neighborhood_name,
+        dietitian_note,
+        order_note,
+        special_ops_note,
+        balance_due,
+        status,
+      } = payload
+
       if (!orderId) {
         return NextResponse.json({ error: 'Sipariş ID eksik.' }, { status: 400 })
       }
 
+      // Mevcut siparişi çekip hangi alanın değiştiğini yakala
+      const { data: existing } = await supabase
+        .from('orders')
+        .select('package_title, full_address, district_name, neighborhood_name, dietitian_note, changed_fields')
+        .eq('id', orderId)
+        .single()
+
+      const todayStr = format(new Date(), 'yyyy-MM-dd')
+      const nextChanged: Record<string, string> = { ...(existing?.changed_fields || {}) }
       const updateFields: Record<string, any> = {}
-      if (dietitian_note !== undefined) updateFields.dietitian_note = String(dietitian_note).trim()
+
+      if (package_title !== undefined) {
+        const val = String(package_title).trim()
+        updateFields.package_title = val
+        if (existing && val !== String(existing.package_title || '').trim()) {
+          nextChanged.package = todayStr
+        }
+      }
+
+      if (dietitian_note !== undefined) {
+        const val = String(dietitian_note).trim()
+        updateFields.dietitian_note = val
+        if (existing && val !== String(existing.dietitian_note || '').trim()) {
+          nextChanged.calorie = todayStr
+        }
+      }
+
+      let addressChanged = false
+      if (full_address !== undefined) {
+        const val = String(full_address).trim()
+        updateFields.full_address = val
+        if (existing && val !== String(existing.full_address || '').trim()) addressChanged = true
+      }
+      if (district_name !== undefined) {
+        const val = String(district_name).trim()
+        updateFields.district_name = val
+        if (existing && val !== String(existing.district_name || '').trim()) addressChanged = true
+      }
+      if (neighborhood_name !== undefined) {
+        const val = String(neighborhood_name).trim()
+        updateFields.neighborhood_name = val
+        if (existing && val !== String(existing.neighborhood_name || '').trim()) addressChanged = true
+      }
+      if (addressChanged) {
+        nextChanged.address = todayStr
+      }
+
       if (order_note !== undefined) updateFields.order_note = String(order_note).trim()
       if (special_ops_note !== undefined)
         updateFields.special_ops_note = String(special_ops_note).trim()
       if (balance_due !== undefined) updateFields.balance_due = Number(balance_due) || 0
       if (status !== undefined) updateFields.status = status
 
+      updateFields.changed_fields = nextChanged
+
       const { error } = await supabase.from('orders').update(updateFields).eq('id', orderId)
       if (error) {
         return NextResponse.json({ error: error.message }, { status: 500 })
       }
-      return NextResponse.json({ success: true })
+      return NextResponse.json({ success: true, changed_fields: nextChanged })
     }
 
     return NextResponse.json({ error: 'Geçersiz işlem' }, { status: 400 })

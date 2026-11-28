@@ -1,5 +1,14 @@
 // src/lib/calendar-engine.ts
-import { addDays, format, isSunday, isSaturday, parseISO, startOfDay, subDays } from 'date-fns'
+import {
+  addDays,
+  format,
+  getDay,
+  isSunday,
+  isSaturday,
+  parseISO,
+  startOfDay,
+  subDays,
+} from 'date-fns'
 import { tr } from 'date-fns/locale'
 import { DeliveryScheduleType } from '@/types/database'
 
@@ -46,14 +55,7 @@ export function getIstanbulNow(now: Date = new Date()): {
 }
 
 /**
- * Türkiye (Europe/Istanbul) saatine göre müşterinin seçebileceği ilk geçerli başlangıç tarihini döner:
- * - Pazartesi - Perşembe 12:00'ye kadar: Ertesi gün (+1 gün)
- * - Pazartesi - Perşembe 12:00 ve sonrası: +2 gün
- * - Cuma 12:00'ye kadar: Cumartesi (+1 gün) -> Bu haftanın Pazar günü de seçilebilir!
- * - Cuma 12:00 ve sonrası: Pazartesi (+3 gün) -> Cumartesi mutfağı kapandığı için bu haftanın Pazar günü de kapanır.
- * - Cumartesi 12:00'ye kadar: Pazartesi (+2 gün)
- * - Cumartesi 12:00 ve sonrası: Salı (+3 gün)
- * - Pazar (tüm gün): Salı (+2 gün)
+ * Türkiye (Europe/Istanbul) saatine göre müşterinin seçebileceği ilk geçerli başlangıç tarihini döner.
  */
 export function getEarliestStartDate(
   minPrepDays: number = 2,
@@ -76,7 +78,6 @@ export function getEarliestStartDate(
 
   let candidate = addDays(istanbulDayStart, daysToAdd)
 
-  // Cuma 12:00 sonrası candidate Pazar'a denk gelirse Pazartesi'ye kaydır (Cumartesi mutfağı kapandığı için)
   while (isSunday(candidate) || blockedSet.has(format(candidate, 'yyyy-MM-dd'))) {
     candidate = addDays(candidate, 1)
   }
@@ -182,6 +183,73 @@ export function getFreezeEligibility(
   }
 }
 
+/**
+ * Adres Değişikliği Zaman Kuralı (İstanbul saati):
+ * - Normal günler (Salı - Cumartesi): 1 gün önce en geç saat 14:00
+ * - Pazar teslimatı: En geç Cuma saat 14:00
+ * - Pazartesi teslimatı: En geç Cumartesi saat 12:00
+ */
+export function getAddressChangeEligibility(
+  deliveryDateStr: string,
+  now: Date = new Date()
+): {
+  canChange: boolean
+  reason: string
+  deadlineText: string
+} {
+  const { istanbulDayStart, hour } = getIstanbulNow(now)
+  const targetDay = startOfDay(parseISO(deliveryDateStr))
+  const dow = getDay(targetDay) // 0=Pazar, 1=Pazartesi ... 6=Cumartesi
+
+  let deadlineDay: Date
+  let deadlineHour: number
+
+  if (dow === 1) {
+    // Pazartesi teslimatı -> en geç Cumartesi 12:00
+    deadlineDay = subDays(targetDay, 2)
+    deadlineHour = 12
+  } else if (dow === 0) {
+    // Pazar teslimatı -> en geç Cuma 14:00
+    deadlineDay = subDays(targetDay, 2)
+    deadlineHour = 14
+  } else {
+    // Salı - Cumartesi teslimatları -> 1 gün önce 14:00
+    deadlineDay = subDays(targetDay, 1)
+    deadlineHour = 14
+  }
+
+  const deadlineText = `${format(deadlineDay, 'dd.MM.yyyy EEEE', { locale: tr })} saat ${String(
+    deadlineHour
+  ).padStart(2, '0')}:00`
+
+  if (targetDay <= istanbulDayStart) {
+    return {
+      canChange: false,
+      reason: 'Bu teslimat günü başladığı veya geçtiği için adres değiştirilemez.',
+      deadlineText,
+    }
+  }
+
+  const todayStr = format(istanbulDayStart, 'yyyy-MM-dd')
+  const deadlineStr = format(deadlineDay, 'yyyy-MM-dd')
+
+  if (todayStr > deadlineStr || (todayStr === deadlineStr && hour >= deadlineHour)) {
+    return {
+      canChange: false,
+      reason: `${format(targetDay, 'dd.MM.yyyy EEEE', {
+        locale: tr,
+      })} teslimatı için adres değişikliği süresi doldu (Son işlem: ${deadlineText}). Acil durumlar için WhatsApp hattımızdan ulaşabilirsiniz.`,
+      deadlineText,
+    }
+  }
+
+  return {
+    canChange: true,
+    reason: `Son adres değişikliği: ${deadlineText}`,
+    deadlineText,
+  }
+}
+
 export function isDateSelectableForStart(
   date: Date,
   minPrepDays: number = 2,
@@ -196,7 +264,6 @@ export function isDateSelectableForStart(
   if (blockedDates.includes(format(target, 'yyyy-MM-dd'))) return false
 
   if (isSunday(target)) {
-    // Pazar başlangıç sadece "Her Gün" paketinde geçerlidir ve teslimatı bir önceki Cumartesi sabahı yapılır
     if (scheduleType !== 'every_day_sat_double') return false
     const prevSatStr = format(subDays(target, 1), 'yyyy-MM-dd')
     if (blockedDates.includes(prevSatStr)) return false
@@ -208,8 +275,6 @@ export function isDateSelectableForStart(
 /**
  * Seçilen Başlangıç Tarihi, Paket Gün Sayısı ve Teslimat Kuralına göre
  * tüm teslimat takvimini ve kesin Paket Bitiş Tarihini hesaplar.
- * - Eğer müşteri "Her Gün" paketinde Pazar gününü başlangıç seçerse,
- *   ilk günün 1 paketi bir önceki Cumartesi sabahı sevkiyatına yazılır.
  */
 export function generateDeliverySchedule(
   startDateStr: string,
@@ -227,7 +292,6 @@ export function generateDeliverySchedule(
   let currentDate = parseISO(startDateStr)
   let safetyCounter = 0
 
-  // Özel Kural: Pazar başlangıçlı "Her Gün" paketinde ilk gün paketi Cumartesi sabahı teslim edilir
   if (
     isSunday(currentDate) &&
     scheduleType === 'every_day_sat_double' &&
@@ -241,7 +305,7 @@ export function generateDeliverySchedule(
       })
       remainingPackages -= 1
     }
-    currentDate = addDays(currentDate, 1) // Pazartesi'den normal akışa devam et
+    currentDate = addDays(currentDate, 1)
   }
 
   while (remainingPackages > 0 && safetyCounter < 365) {

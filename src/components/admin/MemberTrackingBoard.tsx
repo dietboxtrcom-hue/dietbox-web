@@ -57,7 +57,6 @@ export default function MemberTrackingBoard({
 
   const todayStr = format(new Date(), 'yyyy-MM-dd')
 
-  // Her sipariş için kalan gün ve dondurulmuş gün sayısını hesapla
   const enrichedOrders = useMemo(() => {
     const delMap = new Map<string, any[]>()
     deliveries.forEach((d) => {
@@ -169,6 +168,10 @@ export default function MemberTrackingBoard({
           action: 'update_order_ops',
           payload: {
             orderId: editingOrder.id,
+            package_title: editingOrder.package_title || '',
+            district_name: editingOrder.district_name || '',
+            neighborhood_name: editingOrder.neighborhood_name || '',
+            full_address: editingOrder.full_address || '',
             dietitian_note: editingOrder.dietitian_note || '',
             order_note: editingOrder.order_note || '',
             special_ops_note: editingOrder.special_ops_note || '',
@@ -203,14 +206,13 @@ export default function MemberTrackingBoard({
 
   return (
     <div className="space-y-5">
-      {/* ÜST BAŞLIK & WHATSAPP SİPARİŞ BUTONU */}
       <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm flex flex-wrap items-center justify-between gap-4">
         <div>
           <h2 className="text-lg font-extrabold text-slate-900">
             Üye Takip Panosu (Başlangıç / Bitiş / Dondurma / Bakiye)
           </h2>
           <p className="text-xs text-slate-500">
-            Tüm aktif üyeler bitiş tarihine göre sıralanır; WhatsApp siparişlerini tek ekrandan ekleyip takip edebilirsiniz.
+            Adres, paket veya kalori güncellendiğinde ertesi günkü sevkiyat Excel&apos;inde ilgili hücre otomatik sarı vurgulanır.
           </p>
         </div>
 
@@ -412,7 +414,7 @@ export default function MemberTrackingBoard({
                       onClick={() => setEditingOrder({ ...o })}
                       className="bg-slate-900 hover:bg-emerald-600 text-white text-[11px] font-bold px-3 py-1.5 rounded-lg inline-flex items-center gap-1 cursor-pointer transition"
                     >
-                      <Edit3 className="w-3.5 h-3.5" /> Not / Bakiye
+                      <Edit3 className="w-3.5 h-3.5" /> Düzenle
                     </button>
                   </td>
                 </tr>
@@ -429,18 +431,18 @@ export default function MemberTrackingBoard({
         </table>
       </div>
 
-      {/* HIZLI NOT / BAKİYE DÜZENLEME MODALI */}
+      {/* HIZLI DÜZENLEME MODALI (PAKET / KALORİ / ADRES DEĞİŞİKLİĞİ EXCEL'DE SARI YANAR) */}
       {editingOrder && (
-        <div className="fixed inset-0 bg-slate-950/70 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-slate-950/70 z-50 flex items-center justify-center p-4 overflow-y-auto">
           <form
             onSubmit={handleSaveOpsEdit}
-            className="bg-white rounded-3xl max-w-lg w-full p-6 space-y-4 shadow-2xl"
+            className="bg-white rounded-3xl max-w-xl w-full p-6 space-y-4 shadow-2xl max-h-[90vh] overflow-y-auto"
           >
             <div className="flex items-center justify-between border-b border-slate-200 pb-3">
               <div>
                 <h3 className="font-extrabold text-slate-900">{editingOrder.customer_name}</h3>
                 <span className="text-xs text-slate-500">
-                  {editingOrder.order_number} • {editingOrder.shortPackage}
+                  {editingOrder.order_number} • Değiştirilen Paket / Kalori / Adres Excel&apos;de sarı vurgulanır
                 </span>
               </div>
               <button type="button" onClick={() => setEditingOrder(null)} className="cursor-pointer">
@@ -448,56 +450,110 @@ export default function MemberTrackingBoard({
               </button>
             </div>
 
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                Kalori / Diyetisyen Notu
-              </label>
-              <input
-                type="text"
-                value={editingOrder.dietitian_note || ''}
-                onChange={(e) =>
-                  setEditingOrder({ ...editingOrder, dietitian_note: e.target.value })
-                }
-                className="w-full border border-slate-300 rounded-xl px-3.5 py-2 text-xs"
-              />
-            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Paket Adı (Değişirse Excel&apos;de Sarı Vurgulanır)
+                </label>
+                <input
+                  type="text"
+                  value={editingOrder.package_title || ''}
+                  onChange={(e) =>
+                    setEditingOrder({ ...editingOrder, package_title: e.target.value })
+                  }
+                  className="w-full border border-slate-300 rounded-xl px-3.5 py-2 text-xs font-bold"
+                />
+              </div>
 
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                Alerjen / Mutfak Kısıt Notu
-              </label>
-              <textarea
-                rows={2}
-                value={editingOrder.order_note || ''}
-                onChange={(e) => setEditingOrder({ ...editingOrder, order_note: e.target.value })}
-                className="w-full border border-slate-300 rounded-xl px-3.5 py-2 text-xs"
-              />
-            </div>
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Kalori / Diyetisyen Notu (Değişirse Excel&apos;de Sarı Vurgulanır)
+                </label>
+                <input
+                  type="text"
+                  value={editingOrder.dietitian_note || ''}
+                  onChange={(e) =>
+                    setEditingOrder({ ...editingOrder, dietitian_note: e.target.value })
+                  }
+                  className="w-full border border-slate-300 rounded-xl px-3.5 py-2 text-xs"
+                />
+              </div>
 
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                Özel Operasyon Notu (Juice / Telafi Öğün)
-              </label>
-              <input
-                type="text"
-                value={editingOrder.special_ops_note || ''}
-                onChange={(e) =>
-                  setEditingOrder({ ...editingOrder, special_ops_note: e.target.value })
-                }
-                className="w-full border border-slate-300 rounded-xl px-3.5 py-2 text-xs"
-              />
-            </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">İlçe</label>
+                <input
+                  type="text"
+                  value={editingOrder.district_name || ''}
+                  onChange={(e) =>
+                    setEditingOrder({ ...editingOrder, district_name: e.target.value })
+                  }
+                  className="w-full border border-slate-300 rounded-xl px-3.5 py-2 text-xs"
+                />
+              </div>
 
-            <div>
-              <label className="block text-xs font-bold text-red-700 mb-1">Kalan Bakiye (TL)</label>
-              <input
-                type="number"
-                value={editingOrder.balance_due ?? 0}
-                onChange={(e) =>
-                  setEditingOrder({ ...editingOrder, balance_due: Number(e.target.value) })
-                }
-                className="w-full border border-red-300 bg-red-50/40 rounded-xl px-3.5 py-2 text-sm font-extrabold text-red-800"
-              />
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Mahalle</label>
+                <input
+                  type="text"
+                  value={editingOrder.neighborhood_name || ''}
+                  onChange={(e) =>
+                    setEditingOrder({ ...editingOrder, neighborhood_name: e.target.value })
+                  }
+                  className="w-full border border-slate-300 rounded-xl px-3.5 py-2 text-xs"
+                />
+              </div>
+
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Açık Adres (Değişirse Excel&apos;de Sarı Vurgulanır)
+                </label>
+                <textarea
+                  rows={2}
+                  value={editingOrder.full_address || ''}
+                  onChange={(e) =>
+                    setEditingOrder({ ...editingOrder, full_address: e.target.value })
+                  }
+                  className="w-full border border-slate-300 rounded-xl px-3.5 py-2 text-xs"
+                />
+              </div>
+
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Alerjen / Mutfak Kısıt Notu
+                </label>
+                <textarea
+                  rows={2}
+                  value={editingOrder.order_note || ''}
+                  onChange={(e) => setEditingOrder({ ...editingOrder, order_note: e.target.value })}
+                  className="w-full border border-slate-300 rounded-xl px-3.5 py-2 text-xs"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Özel Not (Juice / Telafi Öğün)
+                </label>
+                <input
+                  type="text"
+                  value={editingOrder.special_ops_note || ''}
+                  onChange={(e) =>
+                    setEditingOrder({ ...editingOrder, special_ops_note: e.target.value })
+                  }
+                  className="w-full border border-slate-300 rounded-xl px-3.5 py-2 text-xs"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-red-700 mb-1">Kalan Bakiye (TL)</label>
+                <input
+                  type="number"
+                  value={editingOrder.balance_due ?? 0}
+                  onChange={(e) =>
+                    setEditingOrder({ ...editingOrder, balance_due: Number(e.target.value) })
+                  }
+                  className="w-full border border-red-300 bg-red-50/40 rounded-xl px-3.5 py-2 text-sm font-extrabold text-red-800"
+                />
+              </div>
             </div>
 
             <div className="flex justify-end gap-2 pt-2">
