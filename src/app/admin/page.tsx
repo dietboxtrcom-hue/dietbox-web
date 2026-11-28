@@ -3,15 +3,17 @@
 
 import { useEffect, useState, useMemo } from 'react'
 import Link from 'next/link'
-import * as XLSX from 'xlsx'
 import { format, differenceInCalendarDays, parseISO } from 'date-fns'
 import { getFreezeEligibility, getIstanbulNow } from '@/lib/calendar-engine'
 import { createClient } from '@/lib/supabase/client'
 import { formatTRY } from '@/lib/pricing-engine'
+import { exportStyledDispatchExcel } from '@/lib/dispatch-excel'
 import RichTextEditor from '@/components/RichTextEditor'
 import SuppliersManager from '@/components/admin/SuppliersManager'
 import TrackingManager from '@/components/admin/TrackingManager'
 import BlogManager from '@/components/admin/BlogManager'
+import MemberTrackingBoard from '@/components/admin/MemberTrackingBoard'
+import ManualOrderModal from '@/components/admin/ManualOrderModal'
 import {
   LayoutDashboard,
   Truck,
@@ -47,10 +49,13 @@ import {
   Award,
   BarChart3,
   BookOpen,
+  ClipboardList,
+  MessageSquarePlus,
 } from 'lucide-react'
 
 type AdminSection =
   | 'dashboard'
+  | 'member_board'
   | 'faqs'
   | 'dispatch'
   | 'products'
@@ -92,6 +97,7 @@ export default function AdminDashboardPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [loading, setLoading] = useState(true)
   const [selectedDate, setSelectedDate] = useState<string>('')
+  const [manualOrderOpen, setManualOrderOpen] = useState(false)
 
   // Veritabanı State'leri
   const [packages, setPackages] = useState<any[]>([])
@@ -397,27 +403,7 @@ export default function AdminDashboardPage() {
   }, [orders, profiles, dailyDispatchList])
 
   const handleExportExcel = () => {
-    if (dailyDispatchList.length === 0) {
-      alert('Seçilen tarihte sevkiyat bulunmuyor.')
-      return
-    }
-    const rows = dailyDispatchList.map((item, idx) => ({
-      'Sıra No': idx + 1,
-      Tarih: item.delivery_date,
-      'Sipariş No': item.orders?.order_number || '-',
-      Müşteri: item.orders?.customer_name || '-',
-      Telefon: item.orders?.customer_phone || '-',
-      İlçe: item.orders?.district_name || '-',
-      Mahalle: item.orders?.neighborhood_name || '-',
-      'Açık Adres': item.orders?.full_address || '-',
-      Paket: item.orders?.package_title || '-',
-      Adet: item.package_quantity > 1 ? `${item.package_quantity} PAKET (C.tesi Çift!)` : '1 Paket',
-      'Alerjen / Not': item.orders?.order_note || '-',
-    }))
-    const ws = XLSX.utils.json_to_sheet(rows)
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, `Sevkiyat_${selectedDate}`)
-    XLSX.writeFile(wb, `DietBox_Sevkiyat_${selectedDate}.xlsx`)
+    exportStyledDispatchExcel(dailyDispatchList, selectedDate)
   }
 
   const openEditPackageModal = (pkg?: any) => {
@@ -516,6 +502,7 @@ export default function AdminDashboardPage() {
 
   const navItems: { id: AdminSection; label: string; icon: any; badge?: number }[] = [
     { id: 'dashboard', label: 'Gösterge Paneli', icon: LayoutDashboard },
+    { id: 'member_board', label: 'Üye Takip Panosu', icon: ClipboardList, badge: stats.activeOrdersCount },
     { id: 'dispatch', label: 'Günlük Sevkiyat & Excel', icon: Truck, badge: dailyDispatchList.length },
     { id: 'products', label: 'Ürünler & Paket Fiyatları', icon: Package, badge: packages.length },
     { id: 'sliders', label: 'Anasayfa Slider (Resim/Video)', icon: Images, badge: sliders.length },
@@ -831,6 +818,16 @@ export default function AdminDashboardPage() {
             </div>
           )}
 
+          {/* 1.5 ÜYE TAKİP PANOSU (KÜBRA HANIM TAKİP LİSTESİ) */}
+          {activeSection === 'member_board' && (
+            <MemberTrackingBoard
+              orders={orders}
+              deliveries={deliveries}
+              onOpenManualOrder={() => setManualOrderOpen(true)}
+              onRefresh={fetchAllData}
+            />
+          )}
+
           {/* 2. GÜNLÜK SEVKİYAT & EXCEL */}
           {activeSection === 'dispatch' && (
             <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-6">
@@ -840,7 +837,7 @@ export default function AdminDashboardPage() {
                     Günlük Mutfak ve Kurye Sevkiyat Listesi
                   </h2>
                   <p className="text-xs text-slate-500">
-                    Tarih seçerek o gün çıkacak paketleri görüntüleyebilir ve Excel (.xlsx) olarak indirebilirsiniz.
+                    Tarih seçerek o gün çıkacak paketleri görüntüleyebilir ve paket bazlı sıralı, renkli Excel (.xlsx) olarak indirebilirsiniz.
                   </p>
                 </div>
 
@@ -1167,9 +1164,19 @@ export default function AdminDashboardPage() {
           {/* 5. SİPARİŞLER & DONDURMA */}
           {activeSection === 'orders' && (
             <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-4">
-              <h2 className="text-lg font-extrabold text-slate-900">
-                Tüm Siparişler ve Teslimat Günü Dondurma ({orders.length})
-              </h2>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <h2 className="text-lg font-extrabold text-slate-900">
+                  Tüm Siparişler ve Teslimat Günü Dondurma ({orders.length})
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => setManualOrderOpen(true)}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold px-4 py-2.5 rounded-xl inline-flex items-center gap-2 cursor-pointer transition"
+                >
+                  <MessageSquarePlus className="w-4 h-4" />
+                  + WhatsApp / Manuel Sipariş Ekle
+                </button>
+              </div>
               <div className="space-y-3">
                 {orders.map((order) => {
                   const orderDeliveries = deliveries.filter((d) => d.order_id === order.id)
@@ -4003,6 +4010,18 @@ export default function AdminDashboardPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* MODAL 5: TEK EKRAN WHATSAPP / MANUEL SİPARİŞ & ÜYE EKLEME */}
+      {manualOrderOpen && (
+        <ManualOrderModal
+          packages={packages}
+          districts={districts}
+          neighborhoods={neighborhoods}
+          existingCustomers={stats.customers}
+          onClose={() => setManualOrderOpen(false)}
+          onSuccess={fetchAllData}
+        />
       )}
     </div>
   )
