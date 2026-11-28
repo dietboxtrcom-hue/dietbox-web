@@ -10,6 +10,8 @@ import { createClient } from '@/lib/supabase/client'
 import { formatTRY } from '@/lib/pricing-engine'
 import RichTextEditor from '@/components/RichTextEditor'
 import SuppliersManager from '@/components/admin/SuppliersManager'
+import TrackingManager from '@/components/admin/TrackingManager'
+import BlogManager from '@/components/admin/BlogManager'
 import {
   LayoutDashboard,
   Truck,
@@ -43,6 +45,8 @@ import {
   Activity,
   Eye,
   Award,
+  BarChart3,
+  BookOpen,
 } from 'lucide-react'
 
 type AdminSection =
@@ -57,9 +61,11 @@ type AdminSection =
   | 'logs'
   | 'locations'
   | 'menus'
+  | 'blog'
   | 'corporate'
   | 'calendar'
   | 'admins'
+  | 'tracking'
   | 'settings'
 
 function slugifyTR(text: string) {
@@ -124,7 +130,7 @@ export default function AdminDashboardPage() {
   })
 
   const [posConfig, setPosConfig] = useState<any>({
-    ziraat_active: true,
+    ziraat_active: false,
     paytr_active: true,
     bank_transfer_active: true,
   })
@@ -168,6 +174,8 @@ export default function AdminDashboardPage() {
     title: string
     subtitle: string
     content: string
+    meta_title: string
+    meta_description: string
     sort_order: number
     is_active: boolean
   }>({
@@ -175,6 +183,8 @@ export default function AdminDashboardPage() {
     title: '',
     subtitle: '',
     content: '',
+    meta_title: '',
+    meta_description: '',
     sort_order: 1,
     is_active: true,
   })
@@ -439,6 +449,8 @@ export default function AdminDashboardPage() {
 
       setEditingPkg({
         ...pkg,
+        meta_title: pkg.meta_title || '',
+        meta_description: pkg.meta_description || '',
         custom_duration_prices: JSON.parse(JSON.stringify(defaultTiers)),
         sample_menu_table: JSON.parse(JSON.stringify(defaultMenu)),
       })
@@ -451,6 +463,8 @@ export default function AdminDashboardPage() {
         daily_base_price: 1100,
         short_description: '',
         full_description: '',
+        meta_title: '',
+        meta_description: '',
         calories_range: '1200 / 1500 / 1800 kcal',
         protein_info: 'Dengeli Makro',
         meal_count_text: '3 Ana + 2 Ara Öğün',
@@ -510,11 +524,13 @@ export default function AdminDashboardPage() {
     { id: 'customers', label: 'Müşteriler & Mesajlar', icon: Users, badge: stats.customers.length },
     { id: 'logs', label: 'Aktivite & Gezinme Logları', icon: Activity, badge: activityLogs.length },
     { id: 'locations', label: 'İl / İlçe / Mahalle Lojistik', icon: MapPin, badge: neighborhoods.length },
+    { id: 'blog', label: 'Blog & Kategoriler', icon: BookOpen },
     { id: 'corporate', label: 'Kurumsal Sayfalar', icon: FileText, badge: corporatePages.length },
     { id: 'faqs', label: 'Sıkça Sorulanlar (SSS)', icon: HelpCircle, badge: faqs.length },
     { id: 'menus', label: 'Menü Yöneticisi', icon: MenuIcon, badge: navMenus.length },
     { id: 'calendar', label: 'Tatil & Kota Kapatma', icon: CalendarOff },
     { id: 'admins', label: 'Yetkili Kullanıcılar', icon: ShieldAlert, badge: adminUsersList.length },
+    { id: 'tracking', label: 'SEO, Analitik & Piksel (Site Kit)', icon: BarChart3 },
     { id: 'settings', label: 'Genel Ayarlar & WhatsApp', icon: Settings },
   ]
 
@@ -1742,6 +1758,9 @@ export default function AdminDashboardPage() {
             </div>
           )}
 
+          {/* 8.5 BLOG & KATEGORİLER */}
+          {activeSection === 'blog' && <BlogManager />}
+
           {/* 9. KURUMSAL SAYFALAR YÖNETİCİSİ */}
           {activeSection === 'corporate' && (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -1759,6 +1778,8 @@ export default function AdminDashboardPage() {
                           title: '',
                           subtitle: '',
                           content: '',
+                          meta_title: '',
+                          meta_description: '',
                           sort_order: corporatePages.length + 1,
                           is_active: true,
                         })
@@ -1789,6 +1810,8 @@ export default function AdminDashboardPage() {
                         title: '',
                         subtitle: '',
                         content: '',
+                        meta_title: '',
+                        meta_description: '',
                         sort_order: corporatePages.length + 1,
                         is_active: true,
                       })
@@ -1878,6 +1901,30 @@ export default function AdminDashboardPage() {
                     />
                   </div>
 
+                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-2.5">
+                    <span className="block text-[11px] font-extrabold text-slate-700">
+                      SEO Ayarları (Google Meta)
+                    </span>
+                    <input
+                      type="text"
+                      maxLength={70}
+                      placeholder="Meta Title (Boş bırakılırsa sayfa başlığı kullanılır)"
+                      value={corpForm.meta_title}
+                      onChange={(e) => setCorpForm({ ...corpForm, meta_title: e.target.value })}
+                      className="w-full border border-slate-300 bg-white rounded-lg px-3 py-1.5 text-xs"
+                    />
+                    <textarea
+                      rows={2}
+                      maxLength={170}
+                      placeholder="Meta Description (Google arama açıklaması)"
+                      value={corpForm.meta_description}
+                      onChange={(e) =>
+                        setCorpForm({ ...corpForm, meta_description: e.target.value })
+                      }
+                      className="w-full border border-slate-300 bg-white rounded-lg px-3 py-1.5 text-xs"
+                    />
+                  </div>
+
                   <label className="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer">
                     <input
                       type="checkbox"
@@ -1959,6 +2006,8 @@ export default function AdminDashboardPage() {
                                   title: p.title,
                                   subtitle: p.subtitle || '',
                                   content: p.content || '',
+                                  meta_title: p.meta_title || '',
+                                  meta_description: p.meta_description || '',
                                   sort_order: p.sort_order || 1,
                                   is_active: p.is_active ?? true,
                                 })
@@ -2595,6 +2644,9 @@ export default function AdminDashboardPage() {
             </div>
           )}
 
+          {/* 13.5 SEO, ANALİTİK & PİKSEL (SİTE KİT) */}
+          {activeSection === 'tracking' && <TrackingManager />}
+
           {/* 14. GENEL AYARLAR, WHATSAPP, SOSYAL MEDYA VE GOOGLE YORUMLARI */}
           {activeSection === 'settings' && (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -3150,7 +3202,7 @@ export default function AdminDashboardPage() {
                             )
                             setGeneralSettings({ ...generalSettings, google_reviews: next })
                           }}
-                          className="col-span-2 border border-slate-300 bg-white rounded-lg px-2 py-1.5 text-xs font-bold text-center"
+                          className="col-span-2 border border-slate-300 bg-white rounded-lg px-2.5 py-1.5 text-xs font-bold text-center"
                         />
                         <button
                           type="button"
@@ -3341,6 +3393,37 @@ export default function AdminDashboardPage() {
                   }
                   className="w-full border border-slate-300 rounded-xl px-3.5 py-2 text-xs"
                 />
+              </div>
+
+              <div className="sm:col-span-3 bg-slate-50 border border-slate-200 rounded-xl p-3.5 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                    SEO Meta Title (Opsiyonel)
+                  </label>
+                  <input
+                    type="text"
+                    maxLength={70}
+                    placeholder="Örn: Glutensiz Diyet Paketi | DietBox"
+                    value={editingPkg.meta_title || ''}
+                    onChange={(e) => setEditingPkg({ ...editingPkg, meta_title: e.target.value })}
+                    className="w-full border border-slate-300 bg-white rounded-lg px-3 py-1.5 text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                    SEO Meta Description (Opsiyonel)
+                  </label>
+                  <input
+                    type="text"
+                    maxLength={170}
+                    placeholder="Google aramalarında görünecek paket açıklaması..."
+                    value={editingPkg.meta_description || ''}
+                    onChange={(e) =>
+                      setEditingPkg({ ...editingPkg, meta_description: e.target.value })
+                    }
+                    className="w-full border border-slate-300 bg-white rounded-lg px-3 py-1.5 text-xs"
+                  />
+                </div>
               </div>
             </div>
 

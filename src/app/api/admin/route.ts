@@ -152,7 +152,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ orders: orders || [] })
     }
 
-    // 5. ÜRÜN / PAKET TAM KAPSAMLI KAYDETME & YENİ EKLEME
+    // 5. ÜRÜN / PAKET TAM KAPSAMLI KAYDETME & YENİ EKLEME (SEO META DAHİL)
     if (action === 'save_package_full') {
       const {
         id,
@@ -168,6 +168,8 @@ export async function POST(request: Request) {
         cover_image,
         custom_duration_prices,
         sample_menu_table,
+        meta_title,
+        meta_description,
         is_active,
       } = payload
 
@@ -184,6 +186,8 @@ export async function POST(request: Request) {
         cover_image,
         custom_duration_prices: custom_duration_prices || [],
         sample_menu_table: sample_menu_table || [],
+        meta_title: (meta_title || '').trim(),
+        meta_description: (meta_description || '').trim(),
         is_active: is_active ?? true,
       }
 
@@ -331,7 +335,6 @@ export async function POST(request: Request) {
         throw new Error('Sadece bekleyen teslimat günleri dondurulabilir.')
       }
 
-      // İstanbul saatine göre geçmiş günler ve 12:00 sınırı herkes için zorunlu
       const freezeCheck = getFreezeEligibility(targetDelivery.delivery_date, new Date())
       if (!freezeCheck.canFreeze) {
         return NextResponse.json({ error: freezeCheck.reason }, { status: 400 })
@@ -362,7 +365,6 @@ export async function POST(request: Request) {
       })
       await supabase.from('orders').update({ estimated_end_date: newEndDate }).eq('id', orderId)
 
-      // Gmail SMTP üzerinden müşteriye + admine gün dondurma bildirimi gönder
       await sendFreezeEmails({
         orderNumber: order.order_number,
         customerName: order.customer_name,
@@ -453,14 +455,26 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true })
     }
 
-    // 11. KURUMSAL SAYFA EKLEME / DÜZENLEME / SİLME
+    // 11. KURUMSAL SAYFA EKLEME / DÜZENLEME / SİLME (SEO META DAHİL)
     if (action === 'save_corporate_page') {
-      const { id, slug, title, subtitle, content, sort_order, is_active } = payload
+      const {
+        id,
+        slug,
+        title,
+        subtitle,
+        content,
+        meta_title,
+        meta_description,
+        sort_order,
+        is_active,
+      } = payload
       const rec = {
         slug: (slug || '').trim().toLowerCase(),
         title: (title || '').trim(),
         subtitle: subtitle || '',
         content: content || '',
+        meta_title: (meta_title || '').trim(),
+        meta_description: (meta_description || '').trim(),
         sort_order: Number(sort_order || 1),
         is_active: is_active ?? true,
         updated_at: new Date().toISOString(),

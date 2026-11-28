@@ -1,5 +1,6 @@
 // src/app/kurumsal/[slug]/page.tsx
 import Link from 'next/link'
+import type { Metadata } from 'next'
 import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import SiteHeader from '@/components/SiteHeader'
@@ -7,6 +8,41 @@ import SiteFooter from '@/components/SiteFooter'
 import { ChevronRight, Home, ArrowRight, HelpCircle } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string }>
+}): Promise<Metadata> {
+  const { slug } = await params
+  const supabase = await createClient()
+  const { data: page } = await supabase
+    .from('corporate_pages')
+    .select('title, subtitle, meta_title, meta_description')
+    .eq('slug', slug)
+    .eq('is_active', true)
+    .single()
+
+  if (!page) {
+    return { title: 'Sayfa Bulunamadı | DietBox' }
+  }
+
+  const title = (page.meta_title || '').trim() || `${page.title} | DietBox`
+  const description =
+    (page.meta_description || '').trim() ||
+    (page.subtitle || '').trim() ||
+    `${page.title} - DietBox adrese teslim diyet yemekleri servisi.`
+
+  return {
+    title,
+    description,
+    openGraph: {
+      title,
+      description,
+      type: 'website',
+    },
+  }
+}
 
 export default async function CorporatePage({
   params,

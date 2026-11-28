@@ -5,6 +5,7 @@ import SiteHeader from '@/components/SiteHeader'
 import HeroSlider from '@/components/HeroSlider'
 import PackageCarousel from '@/components/PackageCarousel'
 import CalorieWizard from '@/components/CalorieWizard'
+import BlogCarouselSection from '@/components/BlogCarouselSection'
 import SiteFooter from '@/components/SiteFooter'
 import {
   Utensils,
@@ -157,6 +158,9 @@ export default async function HomePage() {
         {/* İnteraktif VKİ / Kalori Sihirbazı */}
         <CalorieWizard packages={packageList} />
       </main>
+
+      {/* Blog Carousel (Masaüstü 3'lü, Tablet 2'li, Mobil 1'li) */}
+      <BlogCarouselSection />
 
       {/* Footer & Yüzen Butonlar */}
       <SiteFooter generalSettings={generalSettings} />

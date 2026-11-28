@@ -1,6 +1,7 @@
 // src/app/paketler/[slug]/page.tsx
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
+import type { Metadata } from 'next'
 import { Suspense } from 'react'
 import { createClient } from '@/lib/supabase/server'
 import SiteHeader from '@/components/SiteHeader'
@@ -12,6 +13,38 @@ export const dynamic = 'force-dynamic'
 
 interface PageProps {
   params: Promise<{ slug: string }>
+}
+
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  const { slug } = await params
+  const supabase = await createClient()
+  const { data: pkg } = await supabase
+    .from('packages')
+    .select('title, short_description, meta_title, meta_description, cover_image')
+    .eq('slug', slug)
+    .eq('is_active', true)
+    .single()
+
+  if (!pkg) {
+    return { title: 'Paket Bulunamadı | DietBox' }
+  }
+
+  const title = (pkg.meta_title || '').trim() || `${pkg.title} | DietBox`
+  const description =
+    (pkg.meta_description || '').trim() ||
+    (pkg.short_description || '').replace(/\\n/g, ' ').trim() ||
+    `${pkg.title} - Diyetisyen kontrolünde günlük taze teslimat.`
+
+  return {
+    title,
+    description,
+    openGraph: {
+      title,
+      description,
+      type: 'website',
+      images: pkg.cover_image ? [{ url: pkg.cover_image }] : [],
+    },
+  }
 }
 
 export default async function PackageDetailPage({ params }: PageProps) {
