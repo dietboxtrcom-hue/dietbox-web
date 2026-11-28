@@ -1,6 +1,5 @@
 // src/lib/dispatch-excel.ts
-// @ts-ignore - xlsx-js-style tip tanımı içermediği için TS derlemesini korur
-import XLSX from 'xlsx-js-style'
+import ExcelJS from 'exceljs'
 
 export function getShortPackageName(rawTitle: string): string {
   const cleaned = String(rawTitle || '')
@@ -15,37 +14,49 @@ export function getShortPackageName(rawTitle: string): string {
   return `${words[0]} ${words[1]}`
 }
 
-export function extractDietitianAndCalorieNote(order: any): string {
+/**
+ * Sadece [Laktozsuz • Süt Ürünsüz • Kahvaltısız • 1 Ara Öğünsüz] gibi
+ * paket özelleştirmelerini ve özel operasyon (Juice/Telafi) notlarını döner.
+ */
+export function extractCustomizationNote(order: any): string {
   const parts: string[] = []
   const rawTitle = String(order?.package_title || '')
 
-  // 1. Admin / Diyetisyen tarafından girilen özel not
-  if (order?.dietitian_note && String(order.dietitian_note).trim()) {
-    parts.push(String(order.dietitian_note).trim())
-  }
-
-  // 2. Paket adındaki [Laktozsuz • Kahvaltısız] özelleştirmelerini yakala
   const bracketMatch = rawTitle.match(/\[(.*?)\]/)
   if (bracketMatch?.[1]) {
     parts.push(bracketMatch[1].trim())
   }
 
-  // 3. Paket adındaki "- 1500 Kcal" veya "- Diyetisyen Belirlesin" bilgisini yakala
-  const dashSplit = rawTitle.split(' - ')
-  if (dashSplit.length > 1) {
-    const calPart = dashSplit[1].replace(/\[.*?\]/g, '').trim()
-    if (calPart) parts.push(calPart)
-  }
-
-  // 4. Özel operasyon notu (Juice / Telafi vb.)
   if (order?.special_ops_note && String(order.special_ops_note).trim()) {
-    parts.push(`Özel: ${String(order.special_ops_note).trim()}`)
+    parts.push(String(order.special_ops_note).trim())
   }
 
   return parts.length > 0 ? parts.join(' | ') : '-'
 }
 
-export function exportStyledDispatchExcel(dailyDispatchList: any[], selectedDate: string) {
+/**
+ * Sadece Kalori ve Diyetisyen Notu bilgisini döner (Süt Ürünsüz / Öğün Çıkarma hariç).
+ */
+export function extractDietitianAndCalorieNote(order: any): string {
+  const parts: string[] = []
+  const rawTitle = String(order?.package_title || '')
+
+  if (order?.dietitian_note && String(order.dietitian_note).trim()) {
+    parts.push(String(order.dietitian_note).trim())
+  }
+
+  const dashSplit = rawTitle.split(' - ')
+  if (dashSplit.length > 1) {
+    const calPart = dashSplit[1].replace(/\[.*?\]/g, '').trim()
+    if (calPart && !parts.includes(calPart)) {
+      parts.push(calPart)
+    }
+  }
+
+  return parts.length > 0 ? parts.join(' | ') : '-'
+}
+
+export async function exportStyledDispatchExcel(dailyDispatchList: any[], selectedDate: string) {
   if (!dailyDispatchList || dailyDispatchList.length === 0) {
     alert('Seçilen tarihte sevkiyat bulunmuyor.')
     return
@@ -69,27 +80,88 @@ export function exportStyledDispatchExcel(dailyDispatchList: any[], selectedDate
     )
   })
 
+  const wb = new ExcelJS.Workbook()
+  wb.creator = 'DietBox'
+  wb.created = new Date()
+
+  const ws = wb.addWorksheet(`Sevkiyat_${selectedDate}`, {
+    pageSetup: {
+      paperSize: 9, // A4
+      orientation: 'landscape',
+      fitToPage: true,
+      fitToWidth: 1,
+      fitToHeight: 0,
+      horizontalCentered: true,
+      margins: {
+        left: 0.25,
+        right: 0.25,
+        top: 0.35,
+        bottom: 0.35,
+        header: 0.15,
+        footer: 0.15,
+      },
+      printTitlesRow: '1:3', // Çok sayfalı çıktıda başlıklar her sayfada tekrarlanır
+    },
+  })
+
   const headers = [
-    'Sıra',
-    'Paket (Kısa)',
+    '#',
+    'Paket',
     'Adet',
-    'Kalori / Diyetisyen Notu',
+    'Kalori / Diyetisyen',
+    'Özelleştirme / Öğün',
     'Alerjen / Mutfak Notu',
-    'Müşteri',
-    'Telefon',
-    'İlçe',
-    'Mahalle',
-    'Açık Adres',
+    'Müşteri & Telefon',
+    'İlçe / Mahalle & Açık Adres',
     'Sipariş No',
   ]
 
-  const aoa: any[][] = [
-    [`DIETBOX GÜNLÜK MUTFAK & SEVKİYAT LİSTESİ — ${selectedDate}`],
-    [],
-    headers,
+  // Sütun genişlikleri (Toplam ~152 karakter -> A4 Yatay baskıda net ve kırpılmadan oturur)
+  ws.columns = [
+    { width: 5 },  // #
+    { width: 18 }, // Paket
+    { width: 11 }, // Adet
+    { width: 17 }, // Kalori / Diyetisyen
+    { width: 19 }, // Özelleştirme / Öğün
+    { width: 20 }, // Alerjen / Mutfak Notu
+    { width: 20 }, // Müşteri & Telefon
+    { width: 34 }, // İlçe / Mahalle & Açık Adres
+    { width: 12 }, // Sipariş No
   ]
 
-  const groupColors = ['FFFFFF', 'F0FDF4', 'EFF6FF', 'FEFCE8', 'F5F3FF', 'FFF7ED']
+  const thinBorder: Partial<ExcelJS.Borders> = {
+    top: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+    bottom: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+    left: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+    right: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+  }
+
+  // 1. Satır: Üst Başlık Bannerı
+  ws.mergeCells(1, 1, 1, headers.length)
+  const titleCell = ws.getCell('A1')
+  titleCell.value = `DIETBOX GÜNLÜK MUTFAK & SEVKİYAT LİSTESİ — ${selectedDate}`
+  titleCell.font = { name: 'Calibri', bold: true, size: 13, color: { argb: 'FFFFFFFF' } }
+  titleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0D1F18' } }
+  titleCell.alignment = { horizontal: 'center', vertical: 'middle' }
+  ws.getRow(1).height = 28
+
+  // 2. Satır: Boşluk
+  ws.getRow(2).height = 6
+
+  // 3. Satır: Tablo Başlıkları
+  const headerRow = ws.getRow(3)
+  headerRow.height = 24
+  headers.forEach((h, i) => {
+    const cell = headerRow.getCell(i + 1)
+    cell.value = h
+    cell.font = { name: 'Calibri', bold: true, size: 10, color: { argb: 'FFFFFFFF' } }
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF51A885' } }
+    cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true }
+    cell.border = thinBorder
+  })
+
+  // Grup renkleri
+  const groupColors = ['FFFFFFFF', 'FFF0FDF4', 'FFEFF6FF', 'FFFEFCE8', 'FFF5F3FF', 'FFFFF7ED']
   const pkgColorMap = new Map<string, string>()
   const pkgCounts = new Map<string, number>()
   let colorCursor = 0
@@ -105,155 +177,119 @@ export function exportStyledDispatchExcel(dailyDispatchList: any[], selectedDate
     pkgCounts.set(shortPkg, (pkgCounts.get(shortPkg) || 0) + qty)
 
     const dietitianInfo = extractDietitianAndCalorieNote(item.orders)
+    const customInfo = extractCustomizationNote(item.orders)
     const allergenNote = (item.orders?.order_note || '').trim() || '-'
 
-    aoa.push([
+    const customerBlock = [item.orders?.customer_name || '-', item.orders?.customer_phone || '']
+      .filter(Boolean)
+      .join('\n')
+
+    const regionLine = [item.orders?.district_name, item.orders?.neighborhood_name]
+      .filter(Boolean)
+      .join(' / ')
+    const addressBlock = [regionLine, item.orders?.full_address || ''].filter(Boolean).join('\n')
+
+    const row = ws.addRow([
       idx + 1,
       shortPkg,
-      qty > 1 ? `${qty} PAKET (ÇİFT)` : '1 Paket',
+      qty > 1 ? `${qty} PAKET\n(ÇİFT)` : '1 Paket',
       dietitianInfo,
+      customInfo,
       allergenNote,
-      item.orders?.customer_name || '-',
-      item.orders?.customer_phone || '-',
-      item.orders?.district_name || '-',
-      item.orders?.neighborhood_name || '-',
-      item.orders?.full_address || '-',
+      customerBlock,
+      addressBlock,
       item.orders?.order_number || '-',
     ])
+
+    // Adres uzunluğuna göre satır yüksekliğini dinamik ayarla
+    const lineEstimate = Math.max(2, Math.ceil(addressBlock.length / 34) + 1)
+    row.height = Math.max(30, lineEstimate * 13)
+
+    const baseFill = pkgColorMap.get(shortPkg) || 'FFFFFFFF'
+    const isDouble = qty > 1
+    const hasCustom = customInfo !== '-'
+    const hasAllergen = allergenNote !== '-'
+
+    row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+      let fgColor = baseFill
+      let fontColor = 'FF0F172A'
+      let isBold = colNumber === 2 || colNumber === 7
+
+      if (colNumber === 3 && isDouble) {
+        fgColor = 'FFFEF08A' // Sarı vurgu (Çift Paket)
+        fontColor = 'FF854D0E'
+        isBold = true
+      } else if (colNumber === 5 && hasCustom) {
+        fgColor = 'FFE0E7FF' // Açık indigo vurgu (Özelleştirme)
+        fontColor = 'FF3730A3'
+        isBold = true
+      } else if (colNumber === 6 && hasAllergen) {
+        fgColor = 'FFFEE2E2' // Açık kırmızı vurgu (Alerjen)
+        fontColor = 'FF991B1B'
+        isBold = true
+      }
+
+      cell.font = { name: 'Calibri', bold: isBold, size: 9, color: { argb: fontColor } }
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: fgColor } }
+      cell.alignment = {
+        horizontal: colNumber === 1 || colNumber === 3 || colNumber === 9 ? 'center' : 'left',
+        vertical: 'middle',
+        wrapText: true,
+      }
+      cell.border = thinBorder
+    })
   })
 
   // Alt Özet Tablosu (Mutfak Paket Sayıları)
-  const summaryStartRow = aoa.length + 1
-  aoa.push([])
-  aoa.push(['MUTFAK PAKET ÖZETİ', 'TOPLAM ADET'])
+  ws.addRow([])
+  const summaryHeaderRow = ws.addRow(['MUTFAK PAKET ÖZETİ', '', 'TOPLAM ADET'])
+  summaryHeaderRow.height = 22
+  ws.mergeCells(summaryHeaderRow.number, 1, summaryHeaderRow.number, 2)
+  for (let c = 1; c <= 3; c++) {
+    const cell = summaryHeaderRow.getCell(c)
+    cell.font = { name: 'Calibri', bold: true, size: 10, color: { argb: 'FFFFFFFF' } }
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0D1F18' } }
+    cell.alignment = { horizontal: c === 3 ? 'center' : 'left', vertical: 'middle' }
+    cell.border = thinBorder
+  }
+
   let grandTotalPackages = 0
   Array.from(pkgCounts.entries()).forEach(([pkgName, count]) => {
-    aoa.push([pkgName, count])
     grandTotalPackages += count
+    const r = ws.addRow([pkgName, '', count])
+    r.height = 19
+    ws.mergeCells(r.number, 1, r.number, 2)
+    for (let c = 1; c <= 3; c++) {
+      const cell = r.getCell(c)
+      cell.font = { name: 'Calibri', bold: c === 3, size: 9, color: { argb: 'FF0F172A' } }
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } }
+      cell.alignment = { horizontal: c === 3 ? 'center' : 'left', vertical: 'middle' }
+      cell.border = thinBorder
+    }
   })
-  aoa.push(['GENEL TOPLAM PAKET', grandTotalPackages])
 
-  const ws = XLSX.utils.aoa_to_sheet(aoa)
-
-  // Başlık birleştirme
-  ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: headers.length - 1 } }]
-
-  // Sütun genişlikleri
-  ws['!cols'] = [
-    { wch: 6 },  // Sıra
-    { wch: 22 }, // Paket (Kısa)
-    { wch: 16 }, // Adet
-    { wch: 30 }, // Kalori / Diyetisyen Notu
-    { wch: 28 }, // Alerjen / Not
-    { wch: 22 }, // Müşteri
-    { wch: 15 }, // Telefon
-    { wch: 14 }, // İlçe
-    { wch: 22 }, // Mahalle
-    { wch: 38 }, // Açık Adres
-    { wch: 14 }, // Sipariş No
-  ]
-
-  const thinBorder = {
-    top: { style: 'thin', color: { rgb: 'CBD5E1' } },
-    bottom: { style: 'thin', color: { rgb: 'CBD5E1' } },
-    left: { style: 'thin', color: { rgb: 'CBD5E1' } },
-    right: { style: 'thin', color: { rgb: 'CBD5E1' } },
+  const grandRow = ws.addRow(['GENEL TOPLAM PAKET', '', grandTotalPackages])
+  grandRow.height = 21
+  ws.mergeCells(grandRow.number, 1, grandRow.number, 2)
+  for (let c = 1; c <= 3; c++) {
+    const cell = grandRow.getCell(c)
+    cell.font = { name: 'Calibri', bold: true, size: 10, color: { argb: 'FF065F46' } }
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD1FAE5' } }
+    cell.alignment = { horizontal: c === 3 ? 'center' : 'left', vertical: 'middle' }
+    cell.border = thinBorder
   }
 
-  // 1. Satır: Üst Banner Stili
-  if (ws['A1']) {
-    ws['A1'].s = {
-      font: { bold: true, sz: 14, color: { rgb: 'FFFFFF' } },
-      fill: { fgColor: { rgb: '0D1F18' } },
-      alignment: { horizontal: 'center', vertical: 'center' },
-    }
-  }
-
-  // 3. Satır: Tablo Başlıkları
-  for (let c = 0; c < headers.length; c++) {
-    const ref = XLSX.utils.encode_cell({ r: 2, c })
-    if (ws[ref]) {
-      ws[ref].s = {
-        font: { bold: true, sz: 11, color: { rgb: 'FFFFFF' } },
-        fill: { fgColor: { rgb: '51A885' } },
-        alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
-        border: thinBorder,
-      }
-    }
-  }
-
-  // Veri Satırları
-  for (let i = 0; i < sorted.length; i++) {
-    const r = i + 3
-    const item = sorted[i]
-    const shortPkg = getShortPackageName(item.orders?.package_title || '')
-    const baseFill = pkgColorMap.get(shortPkg) || 'FFFFFF'
-    const isDouble = Number(item.package_quantity || 1) > 1
-    const hasAllergen = Boolean((item.orders?.order_note || '').trim())
-
-    for (let c = 0; c < headers.length; c++) {
-      const ref = XLSX.utils.encode_cell({ r, c })
-      if (!ws[ref]) continue
-
-      let cellFill = baseFill
-      let fontColor = '0F172A'
-      let isBold = c === 1 || c === 5
-
-      if (c === 2 && isDouble) {
-        cellFill = 'FEF08A' // Sarı vurgu (Çift Paket)
-        fontColor = '854D0E'
-        isBold = true
-      }
-      if (c === 4 && hasAllergen) {
-        cellFill = 'FEE2E2' // Açık kırmızı vurgu (Alerjen)
-        fontColor = '991B1B'
-        isBold = true
-      }
-
-      ws[ref].s = {
-        font: { bold: isBold, sz: 10, color: { rgb: fontColor } },
-        fill: { fgColor: { rgb: cellFill } },
-        alignment: {
-          horizontal: c === 0 || c === 2 ? 'center' : 'left',
-          vertical: 'center',
-          wrapText: true,
-        },
-        border: thinBorder,
-      }
-    }
-  }
-
-  // Özet Tablosu Stilleri
-  for (let c = 0; c < 2; c++) {
-    const headRef = XLSX.utils.encode_cell({ r: summaryStartRow, c })
-    if (ws[headRef]) {
-      ws[headRef].s = {
-        font: { bold: true, sz: 11, color: { rgb: 'FFFFFF' } },
-        fill: { fgColor: { rgb: '0D1F18' } },
-        alignment: { horizontal: c === 1 ? 'center' : 'left', vertical: 'center' },
-        border: thinBorder,
-      }
-    }
-  }
-
-  for (let r = summaryStartRow + 1; r < aoa.length; r++) {
-    const isGrand = r === aoa.length - 1
-    for (let c = 0; c < 2; c++) {
-      const ref = XLSX.utils.encode_cell({ r, c })
-      if (ws[ref]) {
-        ws[ref].s = {
-          font: { bold: isGrand || c === 1, sz: 10, color: { rgb: isGrand ? '065F46' : '0F172A' } },
-          fill: { fgColor: { rgb: isGrand ? 'D1FAE5' : 'F8FAFC' } },
-          alignment: { horizontal: c === 1 ? 'center' : 'left', vertical: 'center' },
-          border: thinBorder,
-        }
-      }
-    }
-  }
-
-  ws['!rows'] = [{ hpt: 28 }, { hpt: 8 }, { hpt: 24 }]
-
-  const wb = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(wb, ws, `Sevkiyat_${selectedDate}`)
-  XLSX.writeFile(wb, `DietBox_Sevkiyat_${selectedDate}.xlsx`)
+  // Tarayıcıdan .xlsx olarak indir
+  const buffer = await wb.xlsx.writeBuffer()
+  const blob = new Blob([buffer], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `DietBox_Sevkiyat_${selectedDate}.xlsx`
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(url)
 }

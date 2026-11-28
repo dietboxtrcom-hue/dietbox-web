@@ -1,7 +1,7 @@
 // src/components/admin/ManualOrderModal.tsx
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { format } from 'date-fns'
 import { X, Save, UserCheck, MessageSquarePlus } from 'lucide-react'
 
@@ -23,6 +23,42 @@ const WEEKDAY_OPTIONS = [
   { day: 6, label: 'Cmt' },
 ]
 
+function extractDefaultPackageInfo(pkg: any): {
+  tiers: { days: number; label: string; total_price: number }[]
+  defaultDays: number
+  defaultPrice: number
+} {
+  if (!pkg) {
+    return { tiers: [], defaultDays: 14, defaultPrice: 0 }
+  }
+
+  const rawTiers = Array.isArray(pkg.custom_duration_prices) ? pkg.custom_duration_prices : []
+  if (rawTiers.length > 0) {
+    const tiers = rawTiers.map((t: any) => ({
+      days: Number(t.days) || 1,
+      label: t.label || `${t.days} Günlük`,
+      total_price: Number(t.total_price) || 0,
+    }))
+    // Tek seçenek varsa (örn. 3 Günlük Çorba, 21 Günlük Paket) direkt onu seç
+    const chosen = tiers.length === 1 ? tiers[0] : tiers[0]
+    return {
+      tiers,
+      defaultDays: chosen.days,
+      defaultPrice: chosen.total_price,
+    }
+  }
+
+  // Periyot tanımlı değilse paket adından gün sayısını yakalamayı dene (örn: "3 Günlük Çorba")
+  const titleMatch = String(pkg.title || '').match(/(\d+)\s*(günlük|gunluk|gün|gun|days)/i)
+  const fallbackDays = titleMatch ? Number(titleMatch[1]) : 14
+  const basePrice = Number(pkg.daily_base_price || 0)
+  return {
+    tiers: [],
+    defaultDays: fallbackDays,
+    defaultPrice: basePrice > 0 ? basePrice * fallbackDays : 0,
+  }
+}
+
 export default function ManualOrderModal({
   packages,
   districts,
@@ -38,31 +74,66 @@ export default function ManualOrderModal({
   const [customerPhone, setCustomerPhone] = useState('')
   const [customerName, setCustomerName] = useState('')
   const [customerEmail, setCustomerEmail] = useState('')
-  const [districtId, setDistrictId] = useState<number>(districts[0]?.id || 0)
+  const activeDistricts = useMemo(() => districts.filter((d) => d.is_active), [districts])
+  const [districtId, setDistrictId] = useState<number>(activeDistricts[0]?.id || 0)
   const [neighborhoodId, setNeighborhoodId] = useState<number>(0)
   const [fullAddress, setFullAddress] = useState('')
   const [heightCm, setHeightCm] = useState('')
   const [weightKg, setWeightKg] = useState('')
 
   // Paket & Takvim Bilgileri
-  const [packageId, setPackageId] = useState<string>(packages[0]?.id || '')
-  const [durationDays, setDurationDays] = useState<number>(14)
+  const initialPkg = packages[0] || null
+  const initialPkgInfo = extractDefaultPackageInfo(initialPkg)
+
+  const [packageId, setPackageId] = useState<string>(initialPkg ? String(initialPkg.id) : '')
+  const [durationDays, setDurationDays] = useState<number>(initialPkgInfo.defaultDays)
   const [startDate, setStartDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'))
   const [deliveryScheduleType, setDeliveryScheduleType] = useState<string>('every_day_sat_double')
   const [excludedWeekdays, setExcludedWeekdays] = useState<number[]>([])
 
   // Diyetisyen, Operasyon & Ödeme
-  const [dietitianNote, setDietitianNote] = useState('1500 Kcal')
+  const [dietitianNote, setDietitianNote] = useState('')
   const [orderNote, setOrderNote] = useState('')
   const [specialOpsNote, setSpecialOpsNote] = useState('')
-  const [grandTotal, setGrandTotal] = useState<string>('0')
+  const [grandTotal, setGrandTotal] = useState<string>(String(initialPkgInfo.defaultPrice))
   const [balanceDue, setBalanceDue] = useState<string>('0')
   const [paymentMethod, setPaymentMethod] = useState<string>('eft')
+
+  const selectedPkg = useMemo(
+    () => packages.find((p) => String(p.id) === String(packageId)) || null,
+    [packages, packageId]
+  )
+
+  const selectedPkgInfo = useMemo(() => extractDefaultPackageInfo(selectedPkg), [selectedPkg])
 
   const filteredNeighborhoods = useMemo(
     () => neighborhoods.filter((n) => n.district_id === districtId && n.is_active),
     [neighborhoods, districtId]
   )
+
+  useEffect(() => {
+    if (
+      filteredNeighborhoods.length > 0 &&
+      !filteredNeighborhoods.some((n) => n.id === neighborhoodId)
+    ) {
+      setNeighborhoodId(filteredNeighborhoods[0].id)
+    }
+  }, [filteredNeighborhoods, neighborhoodId])
+
+  // Paket değiştiğinde gün sayısını ve toplam fiyatı otomatik güncelle
+  const handlePackageChange = (nextPkgId: string) => {
+    setPackageId(nextPkgId)
+    const nextPkg = packages.find((p) => String(p.id) === nextPkgId)
+    const info = extractDefaultPackageInfo(nextPkg)
+    setDurationDays(info.defaultDays)
+    setGrandTotal(String(info.defaultPrice))
+  }
+
+  // Hazır periyot butonuna tıklanınca gün + tutarı otomatik doldur
+  const handleSelectTier = (tier: { days: number; total_price: number }) => {
+    setDurationDays(tier.days)
+    setGrandTotal(String(tier.total_price))
+  }
 
   const handlePhoneBlur = () => {
     const clean = customerPhone.replace(/\D/g, '').slice(-10)
@@ -104,7 +175,6 @@ export default function ManualOrderModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    const selPkg = packages.find((p) => String(p.id) === String(packageId))
     const selDist = districts.find((d) => d.id === districtId)
     const selNeigh =
       filteredNeighborhoods.find((n) => n.id === neighborhoodId) || filteredNeighborhoods[0]
@@ -125,8 +195,10 @@ export default function ManualOrderModal({
             neighborhoodId: selNeigh?.id || null,
             neighborhoodName: selNeigh?.name || '',
             fullAddress,
-            packageId: selPkg?.id || null,
-            packageTitle: selPkg ? `${selPkg.title} (${durationDays} Günlük)` : 'Özel Paket',
+            packageId: selectedPkg?.id || null,
+            packageTitle: selectedPkg
+              ? `${selectedPkg.title} (${durationDays} Günlük)`
+              : `Özel Paket (${durationDays} Günlük)`,
             durationDays,
             deliveryScheduleType,
             excludedWeekdays,
@@ -252,13 +324,11 @@ export default function ManualOrderModal({
                 }}
                 className="w-full border border-slate-300 bg-white rounded-xl px-3 py-2 text-xs"
               >
-                {districts
-                  .filter((d) => d.is_active)
-                  .map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {d.name} ({d.side})
-                    </option>
-                  ))}
+                {activeDistricts.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name} ({d.side})
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -328,7 +398,7 @@ export default function ManualOrderModal({
               <label className="block text-[11px] font-bold text-slate-700 mb-1">Paket *</label>
               <select
                 value={packageId}
-                onChange={(e) => setPackageId(e.target.value)}
+                onChange={(e) => handlePackageChange(e.target.value)}
                 className="w-full border border-slate-300 bg-white rounded-xl px-3 py-2 text-xs font-bold"
               >
                 {packages.map((p) => (
@@ -341,7 +411,7 @@ export default function ManualOrderModal({
 
             <div>
               <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                Gün Sayısı *
+                Gün Sayısı * (Otomatik)
               </label>
               <input
                 type="number"
@@ -350,7 +420,7 @@ export default function ManualOrderModal({
                 required
                 value={durationDays}
                 onChange={(e) => setDurationDays(Number(e.target.value))}
-                className="w-full border border-slate-300 bg-white rounded-xl px-3 py-2 text-xs font-bold"
+                className="w-full border border-emerald-400 bg-white rounded-xl px-3 py-2 text-xs font-extrabold text-emerald-900"
               />
             </div>
 
@@ -366,6 +436,34 @@ export default function ManualOrderModal({
                 className="w-full border border-slate-300 bg-white rounded-xl px-3 py-2 text-xs font-bold"
               />
             </div>
+
+            {/* Paketin tanımlı periyotları varsa hızlı seçim butonları */}
+            {selectedPkgInfo.tiers.length > 1 && (
+              <div className="sm:col-span-4 space-y-1">
+                <span className="block text-[11px] font-bold text-emerald-900">
+                  Bu Paketin Tanımlı Süreleri (Tıklayınca gün ve tutar otomatik dolar):
+                </span>
+                <div className="flex flex-wrap gap-1.5">
+                  {selectedPkgInfo.tiers.map((t, idx) => {
+                    const active = durationDays === t.days
+                    return (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => handleSelectTier(t)}
+                        className={`px-3 py-1.5 rounded-lg text-[11px] font-bold border cursor-pointer transition ${
+                          active
+                            ? 'bg-emerald-600 text-white border-emerald-600'
+                            : 'bg-white text-slate-700 border-emerald-200 hover:border-emerald-500'
+                        }`}
+                      >
+                        {t.days} Gün — {t.total_price.toLocaleString('tr-TR')} ₺
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
 
             <div className="sm:col-span-2">
               <label className="block text-[11px] font-bold text-slate-700 mb-1">
@@ -417,7 +515,7 @@ export default function ManualOrderModal({
             </label>
             <input
               type="text"
-              placeholder="Örn: 1800 Kcal • Laktozsuz • Kahvaltısız"
+              placeholder="Örn: 1500 Kcal / Diyetisyen Belirlesin"
               value={dietitianNote}
               onChange={(e) => setDietitianNote(e.target.value)}
               className="w-full border border-slate-300 rounded-xl px-3 py-2 text-xs"
