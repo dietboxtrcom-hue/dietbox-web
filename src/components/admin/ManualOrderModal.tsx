@@ -14,6 +14,8 @@ interface Props {
   onSuccess: () => void
 }
 
+const CUSTOM_MENU_VALUE = '__CUSTOM_MENU__'
+
 const WEEKDAY_OPTIONS = [
   { day: 1, label: 'Pzt' },
   { day: 2, label: 'Sal' },
@@ -39,8 +41,7 @@ function extractDefaultPackageInfo(pkg: any): {
       label: t.label || `${t.days} Günlük`,
       total_price: Number(t.total_price) || 0,
     }))
-    // Tek seçenek varsa (örn. 3 Günlük Çorba, 21 Günlük Paket) direkt onu seç
-    const chosen = tiers.length === 1 ? tiers[0] : tiers[0]
+    const chosen = tiers[0]
     return {
       tiers,
       defaultDays: chosen.days,
@@ -48,7 +49,6 @@ function extractDefaultPackageInfo(pkg: any): {
     }
   }
 
-  // Periyot tanımlı değilse paket adından gün sayısını yakalamayı dene (örn: "3 Günlük Çorba")
   const titleMatch = String(pkg.title || '').match(/(\d+)\s*(günlük|gunluk|gün|gun|days)/i)
   const fallbackDays = titleMatch ? Number(titleMatch[1]) : 14
   const basePrice = Number(pkg.daily_base_price || 0)
@@ -85,7 +85,9 @@ export default function ManualOrderModal({
   const initialPkg = packages[0] || null
   const initialPkgInfo = extractDefaultPackageInfo(initialPkg)
 
-  const [packageId, setPackageId] = useState<string>(initialPkg ? String(initialPkg.id) : '')
+  const [packageId, setPackageId] = useState<string>(
+    initialPkg ? String(initialPkg.id) : CUSTOM_MENU_VALUE
+  )
   const [durationDays, setDurationDays] = useState<number>(initialPkgInfo.defaultDays)
   const [startDate, setStartDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'))
   const [deliveryScheduleType, setDeliveryScheduleType] = useState<string>('every_day_sat_double')
@@ -99,9 +101,14 @@ export default function ManualOrderModal({
   const [balanceDue, setBalanceDue] = useState<string>('0')
   const [paymentMethod, setPaymentMethod] = useState<string>('eft')
 
+  const isCustomMenu = packageId === CUSTOM_MENU_VALUE
+
   const selectedPkg = useMemo(
-    () => packages.find((p) => String(p.id) === String(packageId)) || null,
-    [packages, packageId]
+    () =>
+      isCustomMenu
+        ? null
+        : packages.find((p) => String(p.id) === String(packageId)) || null,
+    [packages, packageId, isCustomMenu]
   )
 
   const selectedPkgInfo = useMemo(() => extractDefaultPackageInfo(selectedPkg), [selectedPkg])
@@ -123,6 +130,10 @@ export default function ManualOrderModal({
   // Paket değiştiğinde gün sayısını ve toplam fiyatı otomatik güncelle
   const handlePackageChange = (nextPkgId: string) => {
     setPackageId(nextPkgId)
+    if (nextPkgId === CUSTOM_MENU_VALUE) {
+      setGrandTotal('0')
+      return
+    }
     const nextPkg = packages.find((p) => String(p.id) === nextPkgId)
     const info = extractDefaultPackageInfo(nextPkg)
     setDurationDays(info.defaultDays)
@@ -195,10 +206,12 @@ export default function ManualOrderModal({
             neighborhoodId: selNeigh?.id || null,
             neighborhoodName: selNeigh?.name || '',
             fullAddress,
-            packageId: selectedPkg?.id || null,
-            packageTitle: selectedPkg
+            packageId: isCustomMenu ? null : selectedPkg?.id || null,
+            packageTitle: isCustomMenu
+              ? `Özel Menü (${durationDays} Günlük)`
+              : selectedPkg
               ? `${selectedPkg.title} (${durationDays} Günlük)`
-              : `Özel Paket (${durationDays} Günlük)`,
+              : `Özel Menü (${durationDays} Günlük)`,
             durationDays,
             deliveryScheduleType,
             excludedWeekdays,
@@ -406,12 +419,13 @@ export default function ManualOrderModal({
                     {p.title}
                   </option>
                 ))}
+                <option value={CUSTOM_MENU_VALUE}>Özel Menü (Kişiye Özel)</option>
               </select>
             </div>
 
             <div>
               <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                Gün Sayısı * (Otomatik)
+                Gün Sayısı * {isCustomMenu ? '(Manuel)' : '(Otomatik)'}
               </label>
               <input
                 type="number"
@@ -437,8 +451,14 @@ export default function ManualOrderModal({
               />
             </div>
 
+            {isCustomMenu && (
+              <div className="sm:col-span-4 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 text-[11px] font-semibold text-amber-900">
+                Özel Menü seçildi: Gün sayısını, anlaşılan toplam tutarı ve üyeye özel menü / diyetisyen notlarını aşağıdan girebilirsiniz.
+              </div>
+            )}
+
             {/* Paketin tanımlı periyotları varsa hızlı seçim butonları */}
-            {selectedPkgInfo.tiers.length > 1 && (
+            {!isCustomMenu && selectedPkgInfo.tiers.length > 1 && (
               <div className="sm:col-span-4 space-y-1">
                 <span className="block text-[11px] font-bold text-emerald-900">
                   Bu Paketin Tanımlı Süreleri (Tıklayınca gün ve tutar otomatik dolar):
@@ -537,7 +557,7 @@ export default function ManualOrderModal({
 
           <div>
             <label className="block text-[11px] font-bold text-slate-700 mb-1">
-              Özel Not (Juice / Telafi Öğün)
+              Özel Not (Juice / Telafi Öğün / Özel Menü)
             </label>
             <input
               type="text"

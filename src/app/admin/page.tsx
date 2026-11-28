@@ -403,7 +403,7 @@ export default function AdminDashboardPage() {
   }, [orders, profiles, dailyDispatchList])
 
   const handleExportExcel = () => {
-    exportStyledDispatchExcel(dailyDispatchList, selectedDate)
+    exportStyledDispatchExcel(dailyDispatchList, selectedDate, deliveries)
   }
 
   const openEditPackageModal = (pkg?: any) => {
